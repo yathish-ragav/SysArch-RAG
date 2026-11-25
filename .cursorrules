@@ -1,0 +1,18 @@
+# SysArch-RAG — Cursor AI Engineering Rules
+
+## 1. Environment & Hardware Constraints (NON-NEGOTIABLE)
+- OS: Ubuntu Linux on Asus Vivobook 16 (CPU-only, NO dedicated GPU).
+- Python Package Manager: Always use `uv` (`uv add`, `uv run`), never raw `pip`.
+- Embeddings: Use `fastembed` (ONNX CPU runtime) for `BAAI/bge-base-en-v1.5` (dense) and `Qdrant/bm25` (sparse). NEVER import `torch` or `sentence-transformers` for local GPU inference.
+- Reranking: Use Cohere Rerank API (`rerank-v3.5` via `langchain-cohere`).
+- LLM Inference: Use Groq API (`llama-3.3-70b-versatile` via `langchain-groq`).
+
+## 2. Software Engineering & Architectural Standards
+- Follow Spec-Driven Modularity: Never modify files outside the specific module requested in the prompt.
+- Strict Contracts: Use Pydantic v2 (`BaseModel`, `BaseSettings`) for all data schemas, configurations, and LLM structured outputs. Zero untyped dicts between modules.
+- Type Hints & Async: Every function must have complete Python 3.11+ type annotations. Use `async/await` for FastAPI, Qdrant (`AsyncQdrantClient`), and Redis (`redis.asyncio`).
+- Dual Observability: Every LangChain/LangGraph call MUST attach both LangSmith (`LANGCHAIN_TRACING_V2=true`) and Langfuse Cloud (`langfuse.langchain.CallbackHandler`) callbacks.
+
+## 3. RAG-Specific Guardrails
+- Ingestion: Split strictly along Markdown headers (`#`, `##`, `###`). NEVER split inside fenced code blocks (```yaml, ```python, ```bash).
+- Grounding: Every generated answer must include inline `[file_path § section]` citations or trigger a deterministic refusal when context score < 0.65.
