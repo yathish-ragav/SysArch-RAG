@@ -3657,6 +3657,7 @@ name = "sysarch-rag"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cohere" },
     { name = "fastapi" },
     { name = "fastembed" },
     { name = "langchain" },
@@ -3679,6 +3680,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cohere", specifier = ">=5.15.0" },
     { name = "fastapi", specifier = ">=0.165.0" },
     { name = "fastembed", specifier = ">=0.9.1" },
     { name = "langchain", specifier = ">=1.5.2" },

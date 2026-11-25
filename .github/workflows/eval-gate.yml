@@ -1,0 +1,48 @@
+name: SysArch-RAG Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  ragas-quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python 3.11 & sync dependencies
+        run: |
+          uv python install 3.11
+          uv sync --frozen
+
+      - name: Verify schema & graph imports
+        env:
+          GROQ_API_KEY: "ci-placeholder"
+          COHERE_API_KEY: "ci-placeholder"
+          LANGCHAIN_API_KEY: "ci-placeholder"
+          LANGFUSE_PUBLIC_KEY: "ci-placeholder"
+          LANGFUSE_SECRET_KEY: "ci-placeholder"
+        run: |
+          uv run pytest -v
+          uv run python -c "from src.graph.workflow import rag_graph; from src.api.main import app; print('Graph & API imports OK')"
+
+      - name: Run Ragas Golden Evaluation Gate
+        if: ${{ secrets.GROQ_API_KEY != '' && secrets.QDRANT_URL != '' }}
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+        run: |
+          uv run python -m src.evaluation.run_ragas --enforce-gate
