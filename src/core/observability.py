@@ -1,3 +1,4 @@
+from functools import lru_cache
 import os
 from typing import Any
 from langfuse import Langfuse
@@ -15,18 +16,27 @@ def configure_observability_env() -> None:
     os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_HOST
 
 
-def get_langfuse_run_config(
-    session_id: str | None = None,
-    tags: list[str] | None = None,
-) -> dict[str, Any]:
+@lru_cache(maxsize=1)
+def get_langfuse_client() -> Langfuse:
     configure_observability_env()
-    Langfuse(
+    return Langfuse(
         public_key=settings.LANGFUSE_PUBLIC_KEY,
         secret_key=settings.LANGFUSE_SECRET_KEY,
         host=settings.LANGFUSE_HOST,
     )
+
+
+def get_langfuse_run_config(
+    session_id: str | None = None,
+    tags: list[str] | None = None,
+) -> dict[str, Any]:
+    get_langfuse_client()
     handler = LangfuseCallbackHandler(public_key=settings.LANGFUSE_PUBLIC_KEY)
     metadata: dict[str, Any] = {"langfuse_tags": tags or ["sysarch-rag"]}
     if session_id:
         metadata["langfuse_session_id"] = session_id
     return {"callbacks": [handler], "metadata": metadata}
+
+
+def flush_langfuse() -> None:
+    get_langfuse_client().flush()

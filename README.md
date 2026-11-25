@@ -1,0 +1,123 @@
+# SysArch-RAG
+
+**Self-Correcting Corrective RAG (CRAG) Engine for Cloud & Distributed Systems Documentation**
+
+SysArch-RAG is a production-oriented retrieval and reasoning engine covering **Kubernetes (`v1.32`)**, **AWS EKS**, and **etcd (`v3.5`)** operator documentation. Unlike single-pass cosine-similarity chatbots, it routes queries across service namespaces, fuses dense semantic vectors with BM25 lexical search, cross-encoder reranks candidates, grades context sufficiency in a cyclic **LangGraph** state machine, and enforces deterministic inline source citations (`[S1]`–`[S5]`).
+
+---
+
+## Architecture Overview
+
+```text
+User Query
+   │
+   ▼
+[FastAPI (/v1/query & /v1/query/stream)]
+   ├──► Tier 1 Cache: Redis Exact-Hash L1 (corpus-version & model scoped)
+   ├──► Tier 2 Cache: Qdrant Semantic L2 (cosine >= 0.97 + CLI/version token guard)
+   │
+   ▼ (Cache Miss)
+[LangGraph Cyclic CRAG Engine]
+   ├──► 1. Query Analyzer: Extracts target service filters & search sub-queries
+   ├──► 2. Hybrid Retriever: Qdrant RRF Fusion (BAAI/bge-base-en-v1.5 + BM25 IDF) -> Top 25
+   ├──► 3. Cross-Encoder Reranker: Cohere rerank-v3.5 -> Top 5 (threshold >= 0.65)
+   ├──► 4. Relevance Grader: Score-band fast path + structured LLM sufficiency check
+   │       ├── [Insufficient & retries < 2] ──► 5. Query Rewriter (anti-duplicate expansion) ──┐
+   │       └──────────────────────────────────────────────────────────────────────────────────┘
+   └──► 6. Grounded Synthesizer: XML-delimited context + verified [S1]..[S5] citation extraction
+```
+
+---
+
+## Key Engineering Decisions
+
+- **Structure-Aware, Fence-Safe Ingestion (`src/ingestion/chunker.py`):** Resolves Hugo `code_sample` shortcodes and AsciiDoc code blocks prior to splitting on Markdown headers (`#`–`###`). Keeps YAML manifests and CLI blocks intact under a 1,500-character ceiling so embeddings never truncate mid-manifest.
+- **Zero-Downtime Atomic Indexing (`src/ingestion/indexer.py`):** Builds versioned Qdrant collections (`sysarch_docs_<timestamp>`) with `Modifier.IDF` enabled on sparse BM25 vectors, verifies point counts, and atomically swaps the `sysarch_docs` collection alias.
+- **CPU-Optimized Local Embeddings (`src/retrieval/hybrid_search.py`):** Runs `BAAI/bge-base-en-v1.5` (768-dim) and `Qdrant/bm25` via ONNX Runtime (`fastembed`) off the FastAPI event loop using `asyncio.to_thread` and bounded semaphores—eliminating PyTorch/CUDA bloat on CPU-only hosts.
+- **Hallucination-Resistant Citation Grounding (`src/graph/nodes.py`):** Prompts the synthesis model with short source handles (`[S1]`–`[S5]`) inside `<context>` delimiters, extracts cited handles post-generation, maps them deterministically back to Qdrant metadata (`file_path`, `section_hierarchy`), and triggers a structured refusal if zero valid citations survive.
+- **Two-Tier Cache with Technical Signature Guard (`src/api/cache.py`):** Combines sub-millisecond Redis exact lookup with Qdrant vector cache (`cosine >= 0.97`) while verifying that version numbers, `--flags`, and `CamelCase` resource kinds match exactly before serving a semantic hit.
+
+---
+
+## Indexed Corpus & Observed Benchmarks
+
+| Service Namespace | Source Repository | Markdown Files | Indexed Hybrid Chunks |
+| :--- | :--- | :---: | :---: |
+| `kubernetes` (`v1.32`) | `kubernetes/website` (`concepts/` + `tasks/` + resolved `examples/`) | 360 | 4,305 |
+| `aws-eks` (`latest`) | `awsdocs/amazon-eks-user-guide` (`latest/ug/*.adoc` -> `.md`) | 507 | 6,199 |
+| `etcd-cncf` (`v3.5`) | `etcd-io/website` (`content/en/docs/v3.5`) | 91 | 778 |
+| **Total** | | **958** | **11,282** |
+
+- **L1 Exact Cache Hit (Redis):** ~34 ms end-to-end
+- **L2 Semantic Cache Hit (Qdrant + Guard):** ~28 ms end-to-end
+- **Cold CRAG Pipeline (Embed + Hybrid RRF + Rerank + Grade + Synthesis):** ~3.3–3.6 s
+
+---
+
+## Project Structure
+
+```text
+sysarch-rag/
+├── scripts/
+│   └── fetch_docs.py          # Sparse-checkout & AsciiDoc/Hugo normalizer
+├── src/
+│   ├── core/
+│   │   ├── config.py          # Pydantic v2 environment settings
+│   │   ├── observability.py   # LangSmith + Langfuse singleton tracing
+│   │   └── schemas.py         # Strict request, state, grading & citation models
+│   ├── ingestion/
+│   │   ├── chunker.py         # Frontmatter parser & fence-safe Markdown splitter
+│   │   └── indexer.py         # Dense + BM25 IDF vectorizer & atomic alias swapper
+│   ├── retrieval/
+│   │   ├── hybrid_search.py   # Async thread-offloaded FastEmbed + Qdrant RRF search
+│   │   └── reranker.py        # Singleton Cohere AsyncClientV2 reranker
+│   ├── graph/
+│   │   ├── state.py           # LangGraph TypedDict state definition
+│   │   ├── nodes.py           # Analyzer, retriever, grader, rewriter & synthesizer
+│   │   └── workflow.py        # Compiled cyclic CRAG state machine
+│   └── api/
+│       ├── cache.py           # Redis L1 + Qdrant L2 semantic cache
+│       └── main.py            # FastAPI lifespan singletons, /readyz, /v1/query & SSE
+├── docker-compose.yml         # Local Qdrant & Redis infrastructure
+├── .env.example               # Required environment variable template
+└── pyproject.toml             # Managed with uv
+```
+
+---
+
+## Quickstart
+
+### 1. Start Infrastructure & Configure Environment
+```bash
+docker compose up -d
+cp .env.example .env   # Fill in GROQ_API_KEY, COHERE_API_KEY, LANGCHAIN_API_KEY, LANGFUSE_* keys
+uv sync
+```
+
+### 2. Fetch Documentation & Build Hybrid Index
+```bash
+uv run python scripts/fetch_docs.py
+uv run python -m src.ingestion.indexer
+```
+
+### 3. Run the FastAPI Server
+```bash
+uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+### 4. Query the API
+```bash
+curl -X POST http://localhost:8000/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How do PodDisruptionBudgets protect workloads during a voluntary node drain?"}'
+```
+
+---
+
+## Roadmap & Build Status
+
+- [x] **Modules 1–3:** Dual LLMOps (`LangSmith` + `Langfuse`), structure-aware ingestion (`11,282` hybrid IDF chunks), Qdrant RRF + Cohere `rerank-v3.5`
+- [x] **Modules 4–5:** Cyclic LangGraph CRAG workflow, grounded `[S1]`–`[S5]` citations, FastAPI SSE + Two-Tier Redis/Qdrant Semantic Cache
+- [ ] **Module 6:** Ragas golden evaluation dataset (`50` multi-service questions) & GitHub Actions CI quality gate
+- [ ] **Module 7:** QLoRA fine-tuning (`Qwen-2.5-Coder-7B` via Unsloth) for fast local relevance grading & benchmark comparison
+- [ ] **Module 8:** Next.js / Chainlit interactive frontend with live LangGraph node trace viewer & cloud deployment

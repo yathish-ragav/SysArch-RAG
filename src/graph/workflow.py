@@ -1,7 +1,7 @@
 import asyncio
 from langgraph.graph import END, START, StateGraph
 from src.core.config import settings
-from src.core.observability import get_langfuse_run_config
+from src.core.observability import flush_langfuse, get_langfuse_run_config
 from src.graph.nodes import (
     analyze_query_node,
     grade_documents_node,
@@ -10,6 +10,8 @@ from src.graph.nodes import (
     synthesize_answer_node,
 )
 from src.graph.state import GraphState
+from src.retrieval.hybrid_search import close_qdrant_client
+from src.retrieval.reranker import close_cohere_client
 
 
 def _route_after_grading(state: GraphState) -> str:
@@ -47,13 +49,23 @@ rag_graph = build_rag_graph()
 
 
 async def _smoke_test() -> None:
-    run_cfg = get_langfuse_run_config(session_id="cli-smoke-test", tags=["module-4"])
-    result = await rag_graph.ainvoke(
-        {"query": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?"},
-        config=run_cfg,
-    )
-    print(f"Retries: {result.get('retry_count', 0)} | Grade: {result.get('grade_result')}")
-    print("\n--- ANSWER ---\n", result.get("final_answer"))
+    try:
+        run_cfg = get_langfuse_run_config(session_id="hardened-smoke-test", tags=["hardened-v1"])
+        run_cfg["recursion_limit"] = 15
+        result = await rag_graph.ainvoke(
+            {"query": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?"},
+            config=run_cfg,
+        )
+        print(
+            f"Services: {result.get('services')} | Fallback: {result.get('analysis_fallback')} | "
+            f"Retries: {result.get('retry_count', 0)} | Refused: {result.get('refused')}"
+        )
+        print("Citations:", [(c.ref_id, c.file_path, c.section) for c in result.get("citations", [])])
+        print("\n--- ANSWER ---\n", result.get("final_answer"))
+    finally:
+        await close_cohere_client()
+        await close_qdrant_client()
+        flush_langfuse()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,25 @@ import cohere
 import httpx
 from src.core.config import settings
 from src.core.schemas import ScoredChunk
-from src.retrieval.hybrid_search import hybrid_search
+
+_http_client: httpx.AsyncClient | None = None
+_cohere_client: cohere.AsyncClientV2 | None = None
+
+
+def get_cohere_client() -> cohere.AsyncClientV2:
+    global _http_client, _cohere_client
+    if _cohere_client is None:
+        _http_client = httpx.AsyncClient(timeout=25.0, limits=httpx.Limits(max_connections=20, max_keepalive_connections=10))
+        _cohere_client = cohere.AsyncClientV2(api_key=settings.COHERE_API_KEY, httpx_client=_http_client)
+    return _cohere_client
+
+
+async def close_cohere_client() -> None:
+    global _http_client, _cohere_client
+    if _http_client is not None:
+        await _http_client.aclose()
+    _http_client = None
+    _cohere_client = None
 
 
 async def rerank_chunks(
@@ -14,17 +32,12 @@ async def rerank_chunks(
     if not candidates:
         return []
 
-    async with httpx.AsyncClient(timeout=30.0) as http_client:
-        co = cohere.AsyncClientV2(
-            api_key=settings.COHERE_API_KEY,
-            httpx_client=http_client,
-        )
-        response = await co.rerank(
-            model=settings.RERANK_MODEL,
-            query=query,
-            documents=[c.chunk.content for c in candidates],
-            top_n=min(top_n, len(candidates)),
-        )
+    response = await get_cohere_client().rerank(
+        model=settings.RERANK_MODEL,
+        query=query,
+        documents=[c.chunk.content for c in candidates],
+        top_n=min(top_n, len(candidates)),
+    )
 
     reranked: list[ScoredChunk] = []
     for item in response.results:
@@ -40,11 +53,17 @@ async def rerank_chunks(
 
 
 async def _smoke_test() -> None:
-    test_query = "How does etcd handle Raft leader election timeout and heartbeat interval?"
-    candidates = await hybrid_search(test_query, top_k=15, service_filter="etcd-cncf")
-    top_chunks = await rerank_chunks(test_query, candidates, top_n=3)
-    for rank, sc in enumerate(top_chunks, start=1):
-        print(f"#{rank} | rerank={sc.rerank_score:.4f} | rrf={sc.hybrid_score:.4f} | {sc.chunk.metadata.file_path} :: {sc.chunk.metadata.section_hierarchy}")
+    from src.retrieval.hybrid_search import close_qdrant_client, hybrid_search
+
+    try:
+        test_query = "How does etcd handle Raft leader election timeout and heartbeat interval?"
+        candidates = await hybrid_search(test_query, top_k=25, services=["etcd-cncf"])
+        top_chunks = await rerank_chunks(test_query, candidates, top_n=3)
+        for rank, sc in enumerate(top_chunks, start=1):
+            print(f"#{rank} | rerank={sc.rerank_score:.4f} | rrf={sc.hybrid_score:.4f} | {sc.chunk.metadata.file_path} :: {sc.chunk.metadata.section_hierarchy}")
+    finally:
+        await close_cohere_client()
+        await close_qdrant_client()
 
 
 if __name__ == "__main__":

@@ -1,8 +1,13 @@
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 .env
+.env.*
+!.env.example
 data/raw_docs/
 qdrant_storage/
 redis_data/
-.DS_Store
+*.zip
+sysarch_rag_bundle.txt
+.pytest_cache/
+.ruff_cache/
