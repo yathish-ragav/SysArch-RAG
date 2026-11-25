@@ -20,21 +20,21 @@ class Settings(BaseSettings):
 
     # LangSmith Observability
     LANGCHAIN_TRACING_V2: str = "true"
-    LANGCHAIN_ENDPOINT: str = "https://langchain.com"
+    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
     LANGCHAIN_API_KEY: str
     LANGCHAIN_PROJECT: str = "sysarch-rag"
 
     # Langfuse Cloud Observability
     LANGFUSE_PUBLIC_KEY: str
     LANGFUSE_SECRET_KEY: str
-    LANGFUSE_HOST: str = "https://langfuse.com"
+    LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
 
     # Model & Retrieval Thresholds
     DENSE_MODEL: str = "BAAI/bge-base-en-v1.5"
     SPARSE_MODEL: str = "Qdrant/bm25"
     RERANK_MODEL: str = "rerank-v3.5"
-    SYNTHESIS_MODEL: str = "llama-3.3-70b-versatile"
-    GRADER_MODEL: str = "llama-3.1-8b-instant"
+    SYNTHESIS_MODEL: str = "openai/gpt-oss-120b"
+    GRADER_MODEL: str = "openai/gpt-oss-20b"
     RERANK_SCORE_THRESHOLD: float = 0.65
     MAX_RETRIES: int = 2
 
