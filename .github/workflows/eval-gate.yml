@@ -45,4 +45,8 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
         run: |
+          if [ -z "$GROQ_API_KEY" ] || [ -z "$QDRANT_URL" ]; then
+            echo "Skipping live Ragas evaluation (cloud secrets not configured yet)."
+            exit 0
+          fi
           uv run python -m src.evaluation.run_ragas --enforce-gate
