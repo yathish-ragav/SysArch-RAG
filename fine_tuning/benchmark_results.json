@@ -1,0 +1,13 @@
+{
+  "model": "Qwen/Qwen2.5-3B-Instruct",
+  "base": {
+    "total": 54,
+    "json_valid_rate": 0.9815,
+    "accuracy": 0.6481
+  },
+  "qlora": {
+    "total": 54,
+    "json_valid_rate": 1.0,
+    "accuracy": 0.8889
+  }
+}

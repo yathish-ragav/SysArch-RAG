@@ -306,7 +306,7 @@ async def run_evaluation(
                 model=JUDGE_MODEL,
                 api_key=settings.GROQ_API_KEY,
                 temperature=0.0,
-                max_tokens=2048,
+                max_tokens=4096,
                 reasoning_effort="low",
                 timeout=90.0,
                 max_retries=3,
