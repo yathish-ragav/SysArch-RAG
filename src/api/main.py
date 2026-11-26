@@ -118,37 +118,47 @@ async def query_endpoint(req: QueryRequest) -> RAGResponse:
 async def query_stream_endpoint(req: QueryRequest) -> StreamingResponse:
     async def event_gen() -> AsyncGenerator[str, None]:
         t0 = time.perf_counter()
-        yield f"data: {json.dumps({'type': 'trace', 'node': 'cache_lookup'})}\n\n"
-        dense_vec, _ = await embed_query_async(req.query)
-        cached = await lookup_cache(req.query, req.service_filter, dense_vec=dense_vec)
-        if cached is not None:
-            cached.latency_ms = round((time.perf_counter() - t0) * 1000, 2)
-            yield f"data: {json.dumps({'type': 'final', 'payload': cached.model_dump()})}\n\n"
-            return
+        try:
+            yield f"data: {json.dumps({'type': 'trace', 'node': 'cache_lookup'})}\n\n"
+            dense_vec, _ = await embed_query_async(req.query)
+            cached = await lookup_cache(req.query, req.service_filter, dense_vec=dense_vec)
+            if cached is not None:
+                cached.latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+                yield f"data: {json.dumps({'type': 'final', 'payload': cached.model_dump()})}\n\n"
+                return
 
-        async with _CONCURRENCY_GUARD, asyncio.timeout(45.0):
-            run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-stream-v1"])
-            run_cfg["recursion_limit"] = 15
-            init_state = {"query": req.query}
-            if req.service_filter:
-                init_state["services"] = [req.service_filter]
+            if _CONCURRENCY_GUARD.locked():
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'Server busy; retry shortly.'})}\n\n"
+                return
 
-            final_state: dict = {}
-            async for update in rag_graph.astream(init_state, config=run_cfg, stream_mode="updates"):
-                for node_name, node_out in update.items():
-                    final_state.update(node_out)
-                    yield f"data: {json.dumps({'type': 'trace', 'node': node_name})}\n\n"
+            async with _CONCURRENCY_GUARD, asyncio.timeout(45.0):
+                run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-stream-v1"])
+                run_cfg["recursion_limit"] = 15
+                init_state = {"query": req.query}
+                if req.service_filter:
+                    init_state["services"] = [req.service_filter]
 
-            resp = RAGResponse(
-                answer=str(final_state.get("final_answer", "")),
-                citations=final_state.get("citations", []),
-                services_searched=final_state.get("services", []),
-                retry_count=int(final_state.get("retry_count", 0)),
-                refused=bool(final_state.get("refused", False)),
-                cache_hit=False,
-                latency_ms=round((time.perf_counter() - t0) * 1000, 2),
-            )
-            await store_cache(req.query, req.service_filter, dense_vec, resp)
-            yield f"data: {json.dumps({'type': 'final', 'payload': resp.model_dump()})}\n\n"
+                final_state: dict = {}
+                async for update in rag_graph.astream(init_state, config=run_cfg, stream_mode="updates"):
+                    for node_name, node_out in update.items():
+                        final_state.update(node_out)
+                        yield f"data: {json.dumps({'type': 'trace', 'node': node_name})}\n\n"
+
+                resp = RAGResponse(
+                    answer=str(final_state.get("final_answer", "")),
+                    citations=final_state.get("citations", []),
+                    services_searched=final_state.get("services", []),
+                    retry_count=int(final_state.get("retry_count", 0)),
+                    refused=bool(final_state.get("refused", False)),
+                    cache_hit=False,
+                    latency_ms=round((time.perf_counter() - t0) * 1000, 2),
+                )
+                await store_cache(req.query, req.service_filter, dense_vec, resp)
+                yield f"data: {json.dumps({'type': 'final', 'payload': resp.model_dump()})}\n\n"
+        except TimeoutError:
+            yield f"data: {json.dumps({'type': 'error', 'detail': 'RAG pipeline timed out after 45s.'})}\n\n"
+        except Exception as exc:
+            logger.exception("SSE stream error: %s", exc)
+            yield f"data: {json.dumps({'type': 'error', 'detail': 'Internal streaming error.'})}\n\n"
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")

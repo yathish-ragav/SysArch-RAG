@@ -43,13 +43,13 @@ def _question_from_chunk(
 
     if flags:
         return (
-            f"How do you configure `{flags}` "
+            f"How do you configure `{flags[0]}` "
             f"for {topic} in {service}?"
         )
 
     if kinds:
         return (
-            f"What is the role and behavior of `{kinds}` "
+            f"What is the role and behavior of `{kinds[0]}` "
             f"in {service} ({topic})?"
         )
 
