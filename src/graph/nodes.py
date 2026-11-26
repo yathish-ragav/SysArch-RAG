@@ -16,8 +16,31 @@ REFUSAL_TEXT = "Insufficient verified documentation found in the indexed corpus 
 SERVICE_ERROR_TEXT = "Temporary retrieval or inference service error; please retry shortly."
 
 
+# Prompt-injection hygiene: user queries and retrieved docs are wrapped in <question>/<context> tags.
+# If either contained a literal "</context>" it could close the block early and smuggle instructions.
+# We therefore delete ONLY those delimiter tags. Escaping every "<" / ">" (the old approach) corrupted
+# real documentation content such as `kubectl ... > out.txt` and `<pod-name>` placeholders.
+_DELIMITER_TAG_RE = re.compile(r"</?\s*(question|context)\s*>", re.IGNORECASE)
+# Citations are accepted ONLY in the bracketed form the synthesis prompt demands: [S1], [S2], ...
+# Matching bare tokens made prose like "an S3 bucket" (Amazon S3) count as a citation of source S3.
+_CITATION_RE = re.compile(r"\[S(\d+)\]")
+
+
 def _sanitize_xml(text: str) -> str:
-    return text.replace("<", "&lt;").replace(">", "&gt;")
+    """Remove only the prompt delimiter tags so CLI flags and `<pod-name>` placeholders survive."""
+    return _DELIMITER_TAG_RE.sub("", text)
+
+
+def _extract_valid_ids(text: str, source_map: dict[str, ScoredChunk]) -> list[str]:
+    """Return ordered, de-duplicated bracketed source IDs (e.g. [S1]) that exist in source_map."""
+    # Keep first-seen order, drop duplicates, and ignore IDs with no matching retrieved chunk
+    # (e.g. a hallucinated [S9]) so every returned citation maps to a real source.
+    found: list[str] = []
+    for num in _CITATION_RE.findall(text):
+        cid = f"S{num}"
+        if cid in source_map and cid not in found:
+            found.append(cid)
+    return found
 
 
 @lru_cache(maxsize=1)
@@ -180,6 +203,7 @@ class _RewrittenQuery(BaseModel):
 
 
 async def rewrite_query_node(state: GraphState) -> GraphState:
+    # An upstream failure (retrieval/rerank) is not a "weak context" problem, so rewriting cannot help.
     if state.get("error"):
         return {"retry_count": settings.MAX_RETRIES, "rewrite_exhausted": True}
 
@@ -198,18 +222,27 @@ async def rewrite_query_node(state: GraphState) -> GraphState:
                     content=f'Rewrite the query using {strategy}. Avoid already-tried queries. Return JSON: {{"rewritten_query": str}}.'
                 ),
                 HumanMessage(
-                    content=f"<question>{_sanitize_xml(state['query'])}</question>\nAlready tried: {tried}"
+                    content=f"<question>{_sanitize_xml(state['query'])}</question>\nAlready tried: {_sanitize_xml(str(tried))}"
                 ),
             ]
         )
         new_q = res.rewritten_query.strip()
     except Exception as exc:
-        logger.warning("Rewriter fallback: %s", exc)
-        new_q = ""
+        logger.warning("Rewriter LLM failure: %s", exc)
+        # A Groq outage here is an infrastructure fault, not "insufficient documentation". Setting `error`
+        # routes the graph to synthesize -> refusal_reason="service_error" -> HTTP 503, which is never cached.
+        # Returning an empty rewrite instead would have been negative-cached for 10 minutes as a refusal.
+        return {
+            "retry_count": settings.MAX_RETRIES,
+            "tried_queries": tried,
+            "rewrite_exhausted": True,
+            "error": str(exc),
+        }
 
     if not new_q or new_q in tried:
         return {"retry_count": settings.MAX_RETRIES, "tried_queries": tried, "rewrite_exhausted": True}
 
+    # Respect an explicit caller filter on retries; only LLM-inferred services may be relaxed to "all".
     next_services = state.get("services", []) if state.get("service_locked") else []
     return {
         "active_query": new_q,
@@ -259,16 +292,6 @@ async def synthesize_answer_node(state: GraphState) -> GraphState:
         "(3) End EVERY sentence with exact bracketed source IDs like [S1] or [S1][S2]. Never use ranges like [S1-S3]. Preserve exact YAML/CLI flags."
     )
 
-    def _extract_valid_ids(text: str) -> list[str]:
-        found: list[str] = []
-        for token in text.replace("(", " ").replace(")", " ").replace("[", " ").replace("]", " ").split():
-            cleaned = token.strip(".,;:!?")
-            if cleaned.upper().startswith("S") and cleaned[1:].isdigit():
-                cid = f"S{cleaned[1:]}"
-                if cid in source_map and cid not in found:
-                    found.append(cid)
-        return found
-
     try:
         ai_msg = await _synthesis_llm().ainvoke(
             [
@@ -289,7 +312,7 @@ async def synthesize_answer_node(state: GraphState) -> GraphState:
             "error": str(exc),
         }
 
-    valid_ids = _extract_valid_ids(raw_answer)
+    valid_ids = _extract_valid_ids(raw_answer, source_map)
     if not raw_answer or not valid_ids:
         return {
             "final_answer": REFUSAL_TEXT,

@@ -61,7 +61,11 @@ async def get_corpus_version() -> str:
         )
         _corpus_version_cache = (ver, now)
         return ver
-    except Exception:
+    except Exception as exc:
+        # Cache the fallback for 60s too (same TTL as a success). Otherwise every request would retry a
+        # failing Qdrant call; the fallback is the plain alias name, so keys stay valid once Qdrant recovers.
+        logger.warning("Corpus version lookup failed; using '%s' for 60s: %s", settings.QDRANT_COLLECTION, exc)
+        _corpus_version_cache = (settings.QDRANT_COLLECTION, now)
         return settings.QDRANT_COLLECTION
 
 

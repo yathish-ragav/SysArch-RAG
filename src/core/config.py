@@ -18,6 +18,15 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "sysarch_docs"
     REDIS_URL: str = "redis://localhost:6379"
 
+    # API hardening (all overridable via .env / Render env vars)
+    # CORS_ORIGINS: comma-separated browser origins allowed to call the API. In production set this to
+    # your Vercel URL, e.g. "https://sysarch-rag.vercel.app". Never use "*" on a public endpoint.
+    CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Per-IP fixed window (60s) limit on /v1/query and /v1/query/stream.
+    RATE_LIMIT_PER_MIN: int = 12
+    # Global UTC-day budget of full pipeline runs (cache misses) to protect Groq/Cohere free-tier quotas.
+    DAILY_QUERY_CAP: int = 400
+
     # LangSmith Observability
     LANGCHAIN_TRACING_V2: str = "true"
     LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"

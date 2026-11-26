@@ -81,8 +81,11 @@ class QueryRequest(BaseModel):
 
     @field_validator("query", mode="before")
     @classmethod
-    def strip_query(cls, v: object) -> str:
-        return str(v).strip()
+    def strip_query(cls, v: object) -> object:
+        # Strip only real strings. Non-strings (e.g. JSON null) are passed through untouched so Pydantic
+        # rejects them; the old `str(v)` turned None into the valid-looking query "None".
+        # Stripping first also makes whitespace-only queries fail the min_length=3 check.
+        return v.strip() if isinstance(v, str) else v
 
 
 class RAGResponse(BaseModel):
