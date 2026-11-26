@@ -15,6 +15,8 @@ from src.retrieval.reranker import close_cohere_client
 
 
 def _route_after_grading(state: GraphState) -> str:
+    if state.get("error"):
+        return "synthesize"
     grade = state.get("grade_result")
     retries = state.get("retry_count", 0)
     if grade and grade.is_sufficient:
@@ -22,6 +24,12 @@ def _route_after_grading(state: GraphState) -> str:
     if retries < settings.MAX_RETRIES:
         return "rewrite"
     return "synthesize"
+
+
+def _route_after_rewrite(state: GraphState) -> str:
+    if state.get("rewrite_exhausted") or state.get("error"):
+        return "synthesize"
+    return "retrieve"
 
 
 def build_rag_graph():
@@ -40,7 +48,11 @@ def build_rag_graph():
         _route_after_grading,
         {"synthesize": "synthesize", "rewrite": "rewrite_query"},
     )
-    builder.add_edge("rewrite_query", "retrieve_and_rerank")
+    builder.add_conditional_edges(
+        "rewrite_query",
+        _route_after_rewrite,
+        {"retrieve": "retrieve_and_rerank", "synthesize": "synthesize"},
+    )
     builder.add_edge("synthesize", END)
     return builder.compile()
 
@@ -58,7 +70,8 @@ async def _smoke_test() -> None:
         )
         print(
             f"Services: {result.get('services')} | Fallback: {result.get('analysis_fallback')} | "
-            f"Retries: {result.get('retry_count', 0)} | Refused: {result.get('refused')}"
+            f"Retries: {result.get('retry_count', 0)} | Refused: {result.get('refused')} | "
+            f"Reason: {result.get('refusal_reason')}"
         )
         print("Citations:", [(c.ref_id, c.file_path, c.section) for c in result.get("citations", [])])
         print("\n--- ANSWER ---\n", result.get("final_answer"))

@@ -68,19 +68,40 @@ async def index_chunks(chunks: list[DocumentChunk], batch_size: int = 64) -> Non
         info = await client.get_collection(versioned_name)
         assert info.points_count == total, f"Point count mismatch: {info.points_count} != {total}"
 
-        if await client.collection_exists(settings.QDRANT_COLLECTION):
-            aliases = await client.get_collection_aliases(settings.QDRANT_COLLECTION)
-            if not aliases.aliases:
-                await client.delete_collection(settings.QDRANT_COLLECTION)
+        existing_aliases = {a.alias_name for a in (await client.get_aliases()).aliases}
+        if settings.QDRANT_COLLECTION not in existing_aliases and await client.collection_exists(settings.QDRANT_COLLECTION):
+            await client.delete_collection(settings.QDRANT_COLLECTION)
 
-        await client.update_collection_aliases(
-            change_aliases_operations=[
-                models.CreateAliasOperation(
-                    create_alias=models.CreateAlias(collection_name=versioned_name, alias_name=settings.QDRANT_COLLECTION)
+        ops: list[models.AliasOperations] = []
+        if settings.QDRANT_COLLECTION in existing_aliases:
+            ops.append(
+                models.DeleteAliasOperation(
+                    delete_alias=models.DeleteAlias(alias_name=settings.QDRANT_COLLECTION)
                 )
-            ]
+            )
+        ops.append(
+            models.CreateAliasOperation(
+                create_alias=models.CreateAlias(
+                    collection_name=versioned_name,
+                    alias_name=settings.QDRANT_COLLECTION,
+                )
+            )
         )
-        print(f"SUCCESS: Alias '{settings.QDRANT_COLLECTION}' -> '{versioned_name}' ({info.points_count} hybrid IDF points).")
+        await client.update_collection_aliases(change_aliases_operations=ops)
+
+        # Prune stale versioned collections beyond the latest 2
+        prefix = f"{settings.QDRANT_COLLECTION}_"
+        all_cols = sorted(
+            c.name for c in (await client.get_collections()).collections if c.name.startswith(prefix)
+        )
+        for stale in all_cols[:-2]:
+            await client.delete_collection(stale)
+            print(f"Pruned stale collection '{stale}'.")
+
+        print(
+            f"SUCCESS: Alias '{settings.QDRANT_COLLECTION}' -> '{versioned_name}' "
+            f"({info.points_count} hybrid IDF points)."
+        )
     finally:
         await client.close()
 

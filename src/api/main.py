@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import json
 import logging
 import time
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from src.api.cache import (
@@ -29,6 +29,30 @@ from src.retrieval.reranker import close_cohere_client
 
 logger = logging.getLogger(__name__)
 _CONCURRENCY_GUARD = asyncio.Semaphore(4)
+_RATE_LIMIT_PER_MIN = 12
+
+
+async def _enforce_rate_limit(request: Request) -> None:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    client_ip = (forwarded.split(",").strip() if forwarded else None) or (
+        request.client.host if request.client else "unknown"
+    )
+    key = f"sysarch:rl:{client_ip}"
+    try:
+        r = get_redis_client()
+        count = await r.incr(key)
+        if count == 1:
+            await r.expire(key, 60)
+        if count > _RATE_LIMIT_PER_MIN:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded (12 queries/min); retry shortly.",
+                headers={"Retry-After": "15"},
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Rate-limiter skipped: %s", exc)
 
 
 @asynccontextmanager
@@ -88,7 +112,7 @@ async def run_rag_pipeline(req: QueryRequest) -> RAGResponse:
     async with _CONCURRENCY_GUARD, asyncio.timeout(45.0):
         run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-v1"])
         run_cfg["recursion_limit"] = 15
-        init_state = {"query": req.query}
+        init_state: dict = {"query": req.query}
         if req.service_filter:
             init_state["services"] = [req.service_filter]
 
@@ -99,15 +123,19 @@ async def run_rag_pipeline(req: QueryRequest) -> RAGResponse:
             services_searched=state.get("services", []),
             retry_count=int(state.get("retry_count", 0)),
             refused=bool(state.get("refused", False)),
+            refusal_reason=state.get("refusal_reason"),
             cache_hit=False,
             latency_ms=round((time.perf_counter() - t0) * 1000, 2),
         )
+        if resp.refusal_reason == "service_error":
+            raise HTTPException(status_code=503, detail=resp.answer)
         await store_cache(req.query, req.service_filter, dense_vec, resp)
         return resp
 
 
 @app.post("/v1/query", response_model=RAGResponse)
-async def query_endpoint(req: QueryRequest) -> RAGResponse:
+async def query_endpoint(req: QueryRequest, request: Request) -> RAGResponse:
+    await _enforce_rate_limit(request)
     try:
         return await run_rag_pipeline(req)
     except TimeoutError as exc:
@@ -115,7 +143,11 @@ async def query_endpoint(req: QueryRequest) -> RAGResponse:
 
 
 @app.post("/v1/query/stream")
-async def query_stream_endpoint(req: QueryRequest) -> StreamingResponse:
+async def query_stream_endpoint(req: QueryRequest, request: Request) -> StreamingResponse:
+    await _enforce_rate_limit(request)
+    if _CONCURRENCY_GUARD.locked():
+        raise HTTPException(status_code=429, detail="Server busy; retry shortly.", headers={"Retry-After": "3"})
+
     async def event_gen() -> AsyncGenerator[str, None]:
         t0 = time.perf_counter()
         try:
@@ -127,14 +159,10 @@ async def query_stream_endpoint(req: QueryRequest) -> StreamingResponse:
                 yield f"data: {json.dumps({'type': 'final', 'payload': cached.model_dump()})}\n\n"
                 return
 
-            if _CONCURRENCY_GUARD.locked():
-                yield f"data: {json.dumps({'type': 'error', 'detail': 'Server busy; retry shortly.'})}\n\n"
-                return
-
             async with _CONCURRENCY_GUARD, asyncio.timeout(45.0):
                 run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-stream-v1"])
                 run_cfg["recursion_limit"] = 15
-                init_state = {"query": req.query}
+                init_state: dict = {"query": req.query}
                 if req.service_filter:
                     init_state["services"] = [req.service_filter]
 
@@ -150,9 +178,13 @@ async def query_stream_endpoint(req: QueryRequest) -> StreamingResponse:
                     services_searched=final_state.get("services", []),
                     retry_count=int(final_state.get("retry_count", 0)),
                     refused=bool(final_state.get("refused", False)),
+                    refusal_reason=final_state.get("refusal_reason"),
                     cache_hit=False,
                     latency_ms=round((time.perf_counter() - t0) * 1000, 2),
                 )
+                if resp.refusal_reason == "service_error":
+                    yield f"data: {json.dumps({'type': 'error', 'detail': resp.answer})}\n\n"
+                    return
                 await store_cache(req.query, req.service_filter, dense_vec, resp)
                 yield f"data: {json.dumps({'type': 'final', 'payload': resp.model_dump()})}\n\n"
         except TimeoutError:

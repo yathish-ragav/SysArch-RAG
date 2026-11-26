@@ -2,6 +2,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 ServiceName = Literal["kubernetes", "aws-eks", "etcd-cncf"]
+RefusalReason = Literal["insufficient_context", "service_error"]
 
 SERVICE_ALIASES: dict[str, ServiceName] = {
     "kubernetes": "kubernetes",
@@ -76,7 +77,12 @@ class Citation(BaseModel):
 class QueryRequest(BaseModel):
     query: str = Field(min_length=3, max_length=1500)
     service_filter: ServiceName | None = None
-    session_id: str | None = None
+    session_id: str | None = Field(default=None, pattern=r"^[\w-]{1,64}$")
+
+    @field_validator("query", mode="before")
+    @classmethod
+    def strip_query(cls, v: object) -> str:
+        return str(v).strip()
 
 
 class RAGResponse(BaseModel):
@@ -85,5 +91,6 @@ class RAGResponse(BaseModel):
     services_searched: list[str] = Field(default_factory=list)
     retry_count: int = 0
     refused: bool = False
+    refusal_reason: RefusalReason | None = None
     cache_hit: bool = False
     latency_ms: float = 0.0

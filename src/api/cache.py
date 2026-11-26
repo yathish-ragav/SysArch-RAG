@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import re
+import time
 import uuid
 from qdrant_client import models
 import redis.asyncio as redis
@@ -11,9 +12,20 @@ from src.retrieval.hybrid_search import get_qdrant_client
 logger = logging.getLogger(__name__)
 SEMANTIC_CACHE_COLLECTION = "sysarch_semantic_cache"
 CACHE_TTL_SECONDS = 3600 * 12
+NEGATIVE_CACHE_TTL_SECONDS = 600
 
 _redis_client: redis.Redis | None = None
-_corpus_version_cache: str | None = None
+_corpus_version_cache: tuple[str, float] | None = None
+
+_K8S_TERMS = frozenset({
+    "pod", "pods", "deployment", "deployments", "statefulset", "statefulsets",
+    "daemonset", "daemonsets", "replicaset", "service", "services", "ingress",
+    "networkpolicy", "configmap", "secret", "secrets", "pvc", "pv", "node",
+    "nodes", "namespace", "rbac", "clusterrole", "rolebinding", "serviceaccount",
+    "pdb", "hpa", "vpa", "eni", "irsa", "fargate", "karpenter", "coredns",
+    "kubelet", "etcd", "raft", "quorum", "compaction", "defrag", "snapshot",
+    "enable", "disable", "enabled", "disabled", "not", "without", "never",
+})
 
 
 def get_redis_client() -> redis.Redis:
@@ -38,16 +50,19 @@ async def close_redis_client() -> None:
 
 async def get_corpus_version() -> str:
     global _corpus_version_cache
-    if _corpus_version_cache:
-        return _corpus_version_cache
+    now = time.monotonic()
+    if _corpus_version_cache and (now - _corpus_version_cache[1]) < 60.0:
+        return _corpus_version_cache[0]
     try:
-        aliases = await get_qdrant_client().get_collection_aliases(settings.QDRANT_COLLECTION)
-        if aliases.aliases:
-            _corpus_version_cache = aliases.aliases[0].collection_name
-            return _corpus_version_cache
+        aliases = await get_qdrant_client().get_aliases()
+        ver = next(
+            (a.collection_name for a in aliases.aliases if a.alias_name == settings.QDRANT_COLLECTION),
+            settings.QDRANT_COLLECTION,
+        )
+        _corpus_version_cache = (ver, now)
+        return ver
     except Exception:
-        pass
-    return settings.QDRANT_COLLECTION
+        return settings.QDRANT_COLLECTION
 
 
 async def ensure_semantic_cache_collection(dense_dim: int = 768) -> None:
@@ -64,11 +79,12 @@ def _normalize_query(q: str) -> str:
     return re.sub(r"\s+", " ", q.strip().lower())
 
 
-def _technical_signature(q: str) -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
+def _technical_signature(q: str) -> tuple[frozenset[str], frozenset[str], frozenset[str], frozenset[str]]:
     nums = frozenset(re.findall(r"\bv?\d+(?:\.\d+)*\b", q.lower()))
     flags = frozenset(re.findall(r"--[a-zA-Z0-9_-]+", q.lower()))
     kinds = frozenset(re.findall(r"\b[A-Z][a-zA-Z0-9]+[A-Z][a-zA-Z0-9]+\b", q))
-    return nums, flags, kinds
+    words = frozenset(w for w in re.findall(r"[a-z0-9]+", q.lower()) if w in _K8S_TERMS)
+    return nums, flags, kinds, words
 
 
 def _build_keys(query: str, service_filter: str | None, corpus_ver: str) -> tuple[str, str]:
@@ -87,7 +103,6 @@ async def lookup_cache(
     l1_key, scope = _build_keys(query, service_filter, corpus_ver)
     r = get_redis_client()
 
-    # Tier 1: Exact Redis match
     try:
         raw = await r.get(l1_key)
         if raw:
@@ -97,7 +112,6 @@ async def lookup_cache(
     except Exception as exc:
         logger.warning("Redis L1 lookup skipped: %s", exc)
 
-    # Tier 2: Semantic Qdrant match with strict technical-token guard
     if dense_vec is None:
         return None
     try:
@@ -129,11 +143,21 @@ async def store_cache(
     dense_vec: list[float],
     response: RAGResponse,
 ) -> None:
-    if response.refused or not response.citations:
+    if response.refusal_reason == "service_error":
         return
     corpus_ver = await get_corpus_version()
     l1_key, scope = _build_keys(query, service_filter, corpus_ver)
     payload_json = response.model_dump_json()
+
+    if response.refused:
+        try:
+            await get_redis_client().set(l1_key, payload_json, ex=NEGATIVE_CACHE_TTL_SECONDS)
+        except Exception as exc:
+            logger.warning("Redis negative L1 write skipped: %s", exc)
+        return
+
+    if not response.citations:
+        return
 
     try:
         await get_redis_client().set(l1_key, payload_json, ex=CACHE_TTL_SECONDS)

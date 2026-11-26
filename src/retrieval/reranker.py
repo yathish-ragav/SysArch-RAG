@@ -1,4 +1,5 @@
 import asyncio
+from collections import OrderedDict
 import logging
 import time
 import cohere
@@ -14,13 +15,17 @@ _cohere_client: cohere.AsyncClientV2 | None = None
 _rate_lock = asyncio.Lock()
 _last_call_ts: float = 0.0
 _MIN_INTERVAL_SEC: float = 6.8  # <= 8.8 calls/min (safe under Cohere Trial 10 req/min limit)
-_rerank_cache: dict[tuple[str, tuple[str, ...], int], list[ScoredChunk]] = {}
+_RERANK_CACHE_MAX = 256
+_rerank_cache: OrderedDict[tuple[str, tuple[str, ...], int], list[ScoredChunk]] = OrderedDict()
 
 
 def get_cohere_client() -> cohere.AsyncClientV2:
     global _http_client, _cohere_client
     if _cohere_client is None:
-        _http_client = httpx.AsyncClient(timeout=25.0, limits=httpx.Limits(max_connections=20, max_keepalive_connections=10))
+        _http_client = httpx.AsyncClient(
+            timeout=25.0,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
         _cohere_client = cohere.AsyncClientV2(api_key=settings.COHERE_API_KEY, httpx_client=_http_client)
     return _cohere_client
 
@@ -45,6 +50,7 @@ async def rerank_chunks(
     effective_top_n = min(top_n, len(candidates))
     cache_key = (query.strip(), tuple(c.chunk.chunk_id for c in candidates), effective_top_n)
     if cache_key in _rerank_cache:
+        _rerank_cache.move_to_end(cache_key)
         return _rerank_cache[cache_key]
 
     response = None
@@ -83,6 +89,8 @@ async def rerank_chunks(
             )
         )
     _rerank_cache[cache_key] = reranked
+    while len(_rerank_cache) > _RERANK_CACHE_MAX:
+        _rerank_cache.popitem(last=False)
     return reranked
 
 
@@ -94,7 +102,10 @@ async def _smoke_test() -> None:
         candidates = await hybrid_search(test_query, top_k=25, services=["etcd-cncf"])
         top_chunks = await rerank_chunks(test_query, candidates, top_n=3)
         for rank, sc in enumerate(top_chunks, start=1):
-            print(f"#{rank} | rerank={sc.rerank_score:.4f} | rrf={sc.hybrid_score:.4f} | {sc.chunk.metadata.file_path} :: {sc.chunk.metadata.section_hierarchy}")
+            print(
+                f"#{rank} | rerank={sc.rerank_score:.4f} | rrf={sc.hybrid_score:.4f} | "
+                f"{sc.chunk.metadata.file_path} :: {sc.chunk.metadata.section_hierarchy}"
+            )
     finally:
         await close_cohere_client()
         await close_qdrant_client()
