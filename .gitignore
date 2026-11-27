@@ -11,3 +11,5 @@ redis_data/
 sysarch_rag_bundle.txt
 .pytest_cache/
 .ruff_cache/
+
+.env.local
