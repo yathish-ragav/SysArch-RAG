@@ -19,4 +19,4 @@ ENV PATH="/app/.venv/bin:$PATH" FASTEMBED_CACHE_PATH=/opt/fastembed_cache PYTHON
 RUN chown -R appuser:appgroup /app /opt/fastembed_cache
 USER appuser
 EXPOSE 8000
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+CMD ["sh", "-c", "uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips=\"*\""]
