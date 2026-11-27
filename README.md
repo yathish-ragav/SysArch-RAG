@@ -1,5 +1,9 @@
 # SysArch-RAG
 
+> **Live Production Console:** [https://sys-arch-rag.vercel.app](https://sys-arch-rag.vercel.app)  
+> **Live FastAPI Backend & Swagger Docs:** [https://railway.app](https://railway.app)
+
+
 **Self-Correcting Corrective RAG (CRAG) Engine for Cloud & Distributed Systems Documentation**
 
 SysArch-RAG is a production-grade retrieval and reasoning engine covering **Kubernetes (`v1.32`)**, **AWS EKS**, and **etcd (`v3.5`)** operator documentation. Unlike single-pass cosine-similarity chatbots, it routes queries across service namespaces, fuses dense semantic vectors with BM25 IDF lexical search, cross-encoder reranks candidates, grades context sufficiency in a cyclic **LangGraph** state machine, and enforces deterministic inline source citations (`[S1]`–`[S3]`).
