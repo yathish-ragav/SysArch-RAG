@@ -88,7 +88,16 @@ class QueryRequest(BaseModel):
         return v.strip() if isinstance(v, str) else v
 
 
+
+
+class TraceStep(BaseModel):
+    node: str
+    duration_ms: float = Field(default=0.0)
+    summary: str = Field(default="")
+
+
 class RAGResponse(BaseModel):
+    request_id: str = Field(default="")
     answer: str
     citations: list[Citation] = Field(default_factory=list)
     services_searched: list[str] = Field(default_factory=list)
@@ -96,4 +105,7 @@ class RAGResponse(BaseModel):
     refused: bool = False
     refusal_reason: RefusalReason | None = None
     cache_hit: bool = False
+    cache_tier: Literal["exact_redis", "semantic_qdrant", "live_crag"] = "live_crag"
     latency_ms: float = 0.0
+    original_latency_ms: float | None = None
+    trace: list[TraceStep] = Field(default_factory=list)

@@ -135,6 +135,9 @@ async def lookup_cache(
             if _technical_signature(query) == _technical_signature(cached_q) and "response_json" in payload:
                 resp = RAGResponse.model_validate_json(str(payload["response_json"]))
                 resp.cache_hit = True
+                resp.cache_tier = "exact_redis"
+                if resp.original_latency_ms is None:
+                    resp.original_latency_ms = resp.latency_ms
                 return resp
     except Exception as exc:
         logger.warning("Qdrant L2 cache lookup skipped: %s", exc)

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import time
+import uuid
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -18,7 +19,7 @@ from src.api.cache import (
 )
 from src.core.config import settings
 from src.core.observability import flush_langfuse, get_langfuse_run_config
-from src.core.schemas import QueryRequest, RAGResponse
+from src.core.schemas import QueryRequest, RAGResponse, TraceStep
 from src.graph.workflow import rag_graph
 from src.retrieval.hybrid_search import (
     close_qdrant_client,
@@ -31,7 +32,7 @@ from src.retrieval.reranker import close_cohere_client
 
 logger = logging.getLogger(__name__)
 _CONCURRENCY_GUARD = asyncio.Semaphore(4)
-_INFLIGHT_LOCKS: dict[str, asyncio.Lock] = {}
+_INFLIGHT_LOCKS: dict = dict()
 _RATE_WINDOW_SECONDS = 60
 _DAILY_KEY_TTL_SECONDS = 25 * 3600
 
@@ -110,27 +111,53 @@ async def _admit_pipeline() -> None:
         raise
 
 
-def _cors_origins() -> list[str]:
-    return [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+def _cors_origins() -> list:
+    return list(o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip())
 
 
-def _response_from_state(state: dict, t0: float) -> RAGResponse:
+def _summarize_node(node_name: str, out: dict) -> str:
+    if node_name == "analyze_query":
+        svcs = ", ".join(out.get("services", list())) or "all"
+        return f"Routed services: {svcs}"
+    if node_name == "retrieve":
+        n = len(out.get("reranked_chunks", list()))
+        return f"Retrieved & reranked {n} chunks"
+    if node_name == "grade":
+        g = out.get("grade_result")
+        if g is not None:
+            return f"Sufficient={g.is_sufficient} (conf={g.confidence:.2f})"
+    if node_name == "rewrite":
+        if out.get("rewrite_exhausted"):
+            return "Rewrite budget exhausted"
+        return f"Rewritten query (attempt {out.get('retry_count', 1)})"
+    if node_name == "synthesize":
+        c = len(out.get("citations", list()))
+        return f"Synthesized answer with {c} grounded citations"
+    return "Completed"
+
+
+def _response_from_state(state: dict, t0: float, request_id: str, trace: list | None = None) -> RAGResponse:
+    elapsed = round((time.perf_counter() - t0) * 1000, 2)
     return RAGResponse(
+        request_id=request_id,
         answer=str(state.get("final_answer", "")),
-        citations=state.get("citations", []),
-        services_searched=state.get("services", []),
+        citations=state.get("citations", list()),
+        services_searched=state.get("services", list()),
         retry_count=int(state.get("retry_count", 0)),
         refused=bool(state.get("refused", False)),
         refusal_reason=state.get("refusal_reason"),
         cache_hit=False,
-        latency_ms=round((time.perf_counter() - t0) * 1000, 2),
+        cache_tier="live_crag",
+        latency_ms=elapsed,
+        original_latency_ms=elapsed,
+        trace=trace or list(),
     )
 
 
 def _initial_state(req: QueryRequest) -> dict:
-    init_state: dict = {"query": req.query}
+    init_state = {"query": req.query}
     if req.service_filter:
-        init_state["services"] = [req.service_filter]
+        init_state["services"] = list((req.service_filter,))
     return init_state
 
 
@@ -160,19 +187,19 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-    expose_headers=["Retry-After"],
+    allow_methods=list(("GET", "POST")),
+    allow_headers=list(("*",)),
+    expose_headers=list(("Retry-After",)),
 )
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, str]:
+async def healthz() -> dict:
     return {"status": "ok"}
 
 
 @app.get("/readyz")
-async def readyz() -> dict[str, object]:
+async def readyz() -> dict:
     qdrant_ok = await get_qdrant_client().collection_exists(settings.QDRANT_COLLECTION)
     redis_ok = bool(await get_redis_client().ping())
     if not (qdrant_ok and redis_ok):
@@ -182,21 +209,23 @@ async def readyz() -> dict[str, object]:
 
 async def run_rag_pipeline(req: QueryRequest) -> RAGResponse:
     t0 = time.perf_counter()
+    req_id = f"req_{uuid.uuid4().hex[:12]}"
     dense_vec, _ = await embed_query_async(req.query)
 
     async with _inflight_lock(req.query, req.service_filter):
         cached = await lookup_cache(req.query, req.service_filter, dense_vec=dense_vec)
         if cached is not None:
+            cached.request_id = req_id
             cached.latency_ms = round((time.perf_counter() - t0) * 1000, 2)
             return cached
 
         await _admit_pipeline()
         try:
             async with asyncio.timeout(45.0):
-                run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-v1"])
+                run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=list(("api-v1",)))
                 run_cfg["recursion_limit"] = 15
                 state = await rag_graph.ainvoke(_initial_state(req), config=run_cfg)
-                resp = _response_from_state(state, t0)
+                resp = _response_from_state(state, t0, req_id)
                 if resp.refusal_reason == "service_error":
                     raise HTTPException(status_code=503, detail=resp.answer)
                 await store_cache(req.query, req.service_filter, dense_vec, resp)
@@ -225,14 +254,20 @@ _SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 async def query_stream_endpoint(req: QueryRequest, request: Request) -> StreamingResponse:
     await _enforce_rate_limit(request)
     t0 = time.perf_counter()
+    req_id = f"req_{uuid.uuid4().hex[:12]}"
     dense_vec, _ = await embed_query_async(req.query)
     cached = await lookup_cache(req.query, req.service_filter, dense_vec=dense_vec)
     if cached is not None:
+        cached.request_id = req_id
         cached.latency_ms = round((time.perf_counter() - t0) * 1000, 2)
         hit = cached
 
         async def cached_gen() -> AsyncGenerator[str, None]:
+            yield _sse({"type": "start", "request_id": req_id, "query": req.query})
+            yield _sse({"type": "cache", "hit": True, "tier": hit.cache_tier})
             yield _sse({"type": "trace", "node": "cache_lookup"})
+            for step in hit.trace:
+                yield _sse({"type": "node_end", "node": step.node, "duration_ms": step.duration_ms, "summary": step.summary})
             yield _sse({"type": "final", "payload": hit.model_dump()})
 
         return StreamingResponse(cached_gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
@@ -241,18 +276,30 @@ async def query_stream_endpoint(req: QueryRequest, request: Request) -> Streamin
 
     async def event_gen() -> AsyncGenerator[str, None]:
         try:
+            yield _sse({"type": "start", "request_id": req_id, "query": req.query})
+            yield _sse({"type": "cache", "hit": False, "tier": "live_crag"})
             yield _sse({"type": "trace", "node": "cache_lookup"})
             async with asyncio.timeout(45.0):
-                run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=["api-stream-v1"])
+                run_cfg = get_langfuse_run_config(session_id=req.session_id, tags=list(("api-stream-v1",)))
                 run_cfg["recursion_limit"] = 15
 
-                final_state: dict = {}
+                final_state = dict()
+                trace_steps = list()
+                step_t0 = time.perf_counter()
+                yield _sse({"type": "node_start", "node": "analyze_query"})
+
                 async for update in rag_graph.astream(_initial_state(req), config=run_cfg, stream_mode="updates"):
                     for node_name, node_out in update.items():
+                        dur_ms = round((time.perf_counter() - step_t0) * 1000, 2)
+                        summary = _summarize_node(node_name, node_out)
+                        step = TraceStep(node=node_name, duration_ms=dur_ms, summary=summary)
+                        trace_steps.append(step)
                         final_state.update(node_out)
                         yield _sse({"type": "trace", "node": node_name})
+                        yield _sse({"type": "node_end", "node": node_name, "duration_ms": dur_ms, "summary": summary})
+                        step_t0 = time.perf_counter()
 
-                resp = _response_from_state(final_state, t0)
+                resp = _response_from_state(final_state, t0, req_id, trace=trace_steps)
                 if resp.refusal_reason == "service_error":
                     yield _sse({"type": "error", "detail": resp.answer})
                     return
