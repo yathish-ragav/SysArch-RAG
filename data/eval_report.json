@@ -1,0 +1,316 @@
+{
+  "timestamp_utc": "2026-11-27T17:57:49.668420+00:00",
+  "judge_model": "openai/gpt-oss-20b",
+  "total_cases": 15,
+  "metrics": {
+    "faithfulness": 0.8385,
+    "context_recall": 0.8462,
+    "context_precision": 0.8141,
+    "refusal_accuracy": 1.0
+  },
+  "thresholds": {
+    "faithfulness": 0.95,
+    "context_recall": 0.9,
+    "context_precision": 0.85,
+    "refusal_accuracy": 1.0
+  },
+  "cases": [
+    {
+      "id": "k8s-01",
+      "category": "single_service",
+      "question": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?",
+      "ground_truth": "A PodDisruptionBudget (PDB) limits the number of pods of a replicated application down simultaneously from voluntary disruptions such as kubectl drain by checking minAvailable or maxUnavailable before eviction.",
+      "should_refuse": false,
+      "answer": "PodDisruptionBudgets limit the number of Pods of a replicated application that can be down simultaneously from voluntary disruptions, so when a node is drained the eviction requests for Pods are only allowed if the budget is not exceeded, preventing the application from falling below its required replica count or availability threshold [S1]. Tools like\u202fkubectl\u202fdrain respect PDBs by using the Eviction API, which may temporarily reject evictions until the budget permits, ensuring workloads remain available during the drain [S1][S3].",
+      "contexts": [
+        "[KUBERNETES | kubernetes/concepts/workloads/pods/disruptions.md | Disruptions > Pod disruption budgets]\n## Pod disruption budgets  \n{{< feature-state for_k8s_version=\"v1.21\" state=\"stable\" >}}  \nKubernetes offers features to help you run highly available applications even when you\nintroduce frequent voluntary disruptions.  \nAs an application owner, you can create a PodDisruptionBudget (PDB) for each application.\nA PDB limits the number of Pods of a replicated application that are down simultaneously from\nvoluntary disruptions. For example, a quorum-based application would\nlike to ensure that the number of replicas running is never brought below the\nnumber needed for a quorum. A web front end might want to\nensure that the number of replicas serving load never falls below a certain\npercentage of the total.  \nCluster managers and hosting providers should use tools which\nrespect PodDisruptionBudgets by calling the [Eviction API](/docs/tasks/administer-cluster/safely-drain-node/#eviction-api)\ninstead of directly deleting pods or deployments.  \nFor example, the `kubectl drain` subcommand lets you mark a node as going out of\nservice. When you run `kubectl drain`, the tool tries to evict a",
+        "[KUBERNETES | kubernetes/concepts/workloads/pods/disruptions.md | Disruptions > Pod disruption budgets]\nended to have.  For example, a Deployment which has a `.spec.replicas: 5` is\nsupposed to have 5 pods at any given time.  If its PDB allows for there to be 4 at a time,\nthen the Eviction API will allow voluntary disruption of one (but not two) pods at a time.  \nThe group of pods that comprise the application is specified using a label selector, the same\nas the one used by the application's controller (deployment, stateful-set, etc).  \nThe \"intended\" number of pods is computed from the `.spec.replicas` of the workload resource\nthat is managing those pods. The control plane discovers the owning workload resource by\nexamining the `.metadata.ownerReferences` of the Pod.  \n[Involuntary disruptions](#voluntary-and-involuntary-disruptions) cannot be prevented by PDBs; however they\ndo count against the budget.  \nPods which are deleted or unavailable due to a rolling upgrade to an application do count\nagainst the disruption budget, but workload resources (such as Deployment and StatefulSet)\nare not limited by PDBs when doing rolling upgrades. Instead, the handling of failures\nduring applic",
+        "[KUBERNETES | kubernetes/tasks/administer-cluster/safely-drain-node.md | Safely Drain a Node > (Optional) Configure a disruption budget {#configure-poddisruptionbudget}]\n## (Optional) Configure a disruption budget {#configure-poddisruptionbudget}  \nTo ensure that your workloads remain available during maintenance, you can\nconfigure a [PodDisruptionBudget](/docs/concepts/workloads/pods/disruptions/).  \nIf availability is important for any applications that run or could run on the node(s)\nthat you are draining, [configure a PodDisruptionBudgets](/docs/tasks/run-application/configure-pdb/)\nfirst and then continue following this guide.  \nIt is recommended to set `AlwaysAllow` [Unhealthy Pod Eviction Policy](/docs/tasks/run-application/configure-pdb/#unhealthy-pod-eviction-policy)\nto your PodDisruptionBudgets to support eviction of misbehaving applications during a node drain.\nThe default behavior is to wait for the application pods to become [healthy](/docs/tasks/run-application/configure-pdb/#healthiness-of-a-pod)\nbefore the drain can proceed."
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 2742.4,
+      "ragas": {
+        "faithfulness": 0.8333,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "k8s-02",
+      "category": "single_service",
+      "question": "What are the differences between Readiness probes, Liveness probes, and Startup probes in Kubernetes?",
+      "ground_truth": "Liveness probes restart deadlocked containers, Readiness probes remove unready pods from Service endpoints, and Startup probes delay liveness and readiness checks until slow-starting containers finish initializing.",
+      "should_refuse": false,
+      "answer": "Readiness probes indicate whether a container is ready to receive traffic, and if they fail the pod\u2019s IP is removed from Service endpoints, while liveness probes indicate whether a container is still running and cause the kubelet to kill and restart the container on failure\u202f[S1][S2]. Startup probes verify that an application has finished starting; they disable both liveness and readiness probes until they succeed and run only at container startup\u202f[S1][S3].",
+      "contexts": [
+        "[KUBERNETES | kubernetes/concepts/workloads/pods/pod-lifecycle.md | Pod Lifecycle > Container probes > Types of probe]\n### Types of probe  \nThe kubelet can optionally perform and react to three kinds of probes on running\ncontainers:  \n`livenessProbe`\n: Indicates whether the container is running. If\nthe liveness probe fails, the kubelet kills the container, and the container\nis subjected to its [restart policy](#restart-policy). If a container does not\nprovide a liveness probe, the default state is `Success`.  \n`readinessProbe`\n: Indicates whether the container is ready to respond to requests.\nIf the readiness probe fails, the endpoints controller removes the Pod's IP\naddress from the endpoints of all Services that match the Pod. The default\nstate of readiness before the initial delay is `Failure`. If a container does\nnot provide a readiness probe, the default state is `Success`.  \n`startupProbe`\n: Indicates whether the application within the container is started.\nAll other probes are disabled if a startup probe is provided, until it succeeds.\nIf the startup probe fails, the kubelet kills the container, and the container\nis subjected to its [restart policy](#restart-policy). If a co",
+        "[KUBERNETES | kubernetes/tasks/configure-pod-container/configure-liveness-readiness-startup-probes.md | Configure Liveness, Readiness and Startup Probes]\n# Configure Liveness, Readiness and Startup Probes  \n<!-- overview -->  \nThis page shows how to configure liveness, readiness and startup probes for containers.  \nFor more information about probes, see [Liveness, Readiness and Startup Probes](/docs/concepts/configuration/liveness-readiness-startup-probes)  \nThe [kubelet](/docs/reference/command-line-tools-reference/kubelet/) uses\nliveness probes to know when to restart a container. For example, liveness\nprobes could catch a deadlock, where an application is running, but unable to\nmake progress. Restarting a container in such a state can help to make the\napplication more available despite bugs.  \nA common pattern for liveness probes is to use the same low-cost HTTP endpoint\nas for readiness probes, but with a higher failureThreshold. This ensures that the pod\nis observed as not-ready for some period of time before it is hard killed.  \nThe kubelet uses readiness probes to know when a container is ready to start\naccepting traffic. One use of this signal is to control which Pods are u",
+        "[KUBERNETES | kubernetes/concepts/configuration/liveness-readiness-startup-probes.md | Liveness, Readiness, and Startup Probes > Startup probe]\n## Startup probe  \nA startup probe verifies whether the application within a container is started. This can be used to adopt liveness checks on slow starting containers, avoiding them getting killed by the kubelet before they are up and running.  \nIf such a probe is configured, it disables liveness and readiness checks until it succeeds.  \nThis type of probe is only executed at startup, unlike liveness and readiness probes, which are run periodically.  \n* Read more about the [Configure Liveness, Readiness and Startup Probes](/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes)."
+      ],
+      "refused": false,
+      "citations_count": 3,
+      "latency_ms": 4751.5,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "k8s-03",
+      "category": "single_service",
+      "question": "How does Kubernetes NetworkPolicy control ingress and egress traffic for selected pods?",
+      "ground_truth": "Once a NetworkPolicy selects pods via podSelector and specifies Ingress or Egress in policyTypes, traffic in that direction is rejected unless explicitly allowed by podSelector, namespaceSelector, or ipBlock rules.",
+      "should_refuse": false,
+      "answer": "Kubernetes NetworkPolicy selects pods with a `podSelector` and uses the `policyTypes` field to specify whether the rules apply to inbound (Ingress) traffic, outbound (Egress) traffic, or both [S1]. For each selected pod, the policy\u2019s `ingress` list defines allowed inbound connections by matching both `from` sources and `ports`, while the `egress` list defines allowed outbound connections by matching both `to` destinations and `ports` [S2]. If a policy includes both `Ingress` and `Egress` types, it can simultaneously restrict and permit traffic in both directions for the selected pods [S1][S3].",
+      "contexts": [
+        "[KUBERNETES | kubernetes/concepts/services-networking/network-policies.md | Network Policies > The NetworkPolicy resource {#networkpolicy-resource}]\n> **Note:**\nPOSTing this to the API server for your cluster will have no effect unless your chosen networking\nsolution supports network policy.\n{{< /note >}}  \n__Mandatory Fields__: As with all other Kubernetes config, a NetworkPolicy needs `apiVersion`,\n`kind`, and `metadata` fields. For general information about working with config files, see\n[Configure a Pod to Use a ConfigMap](/docs/tasks/configure-pod-container/configure-pod-configmap/),\nand [Object Management](/docs/concepts/overview/working-with-objects/object-management).  \n**spec**: NetworkPolicy [spec](https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#spec-and-status)\nhas all the information needed to define a particular network policy in the given namespace.  \n**podSelector**: Each NetworkPolicy includes a `podSelector` which selects the grouping of pods to\nwhich the policy applies. The example policy selects pods with the label \"role=db\". An empty\n`podSelector` selects all pods in the namespace.  \n**policyTypes**: Eac",
+        "[KUBERNETES | kubernetes/concepts/services-networking/network-policies.md | Network Policies > The NetworkPolicy resource {#networkpolicy-resource}]\nolicy may include a list of allowed `ingress` rules. Each rule allows\ntraffic which matches both the `from` and `ports` sections. The example policy contains a single\nrule, which matches traffic on a single port, from one of three sources, the first specified via\nan `ipBlock`, the second via a `namespaceSelector` and the third via a `podSelector`.  \n**egress**: Each NetworkPolicy may include a list of allowed `egress` rules. Each rule allows\ntraffic which matches both the `to` and `ports` sections. The example policy contains a single\nrule, which matches traffic on a single port to any destination in `10.0.0.0/24`.  \nSo, the example NetworkPolicy:  \n1. isolates `role=db` pods in the `default` namespace for both ingress and egress traffic\n(if they weren't already isolated)\n1. (Ingress rules) allows connections to all pods in the `default` namespace with the label\n`role=db` on TCP port 6379 from:  \n* any pod in the `default` namespace with the label `role=frontend`\n* any pod in a namespace with the label `project=myproject`\n* IP addresse",
+        "[KUBERNETES | kubernetes/concepts/services-networking/network-policies.md | Network Policies > Default policies > Default deny all ingress and all egress traffic]\n### Default deny all ingress and all egress traffic  \nYou can create a \"default\" policy for a namespace which prevents all ingress AND egress traffic by\ncreating the following NetworkPolicy in that namespace.  \n```yaml\n---\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\nname: default-deny-all\nspec:\npodSelector: {}\npolicyTypes:\n- Ingress\n- Egress\n```  \nThis ensures that even pods that aren't selected by any other NetworkPolicy will not be allowed\ningress or egress traffic."
+      ],
+      "refused": false,
+      "citations_count": 3,
+      "latency_ms": 4821.4,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "k8s-04",
+      "category": "single_service",
+      "question": "What happens to running Pods when a Kubernetes node becomes unreachable or loses heartbeat with the control plane?",
+      "ground_truth": "After node-monitor-grace-period expires, the node Ready condition becomes Unknown, Kubernetes adds the node.kubernetes.io/unreachable NoExecute taint, and pods without tolerations are evicted after 300 seconds.",
+      "should_refuse": false,
+      "answer": "When a node becomes unreachable, the node controller sets the node\u2019s `Ready` condition to `Unknown` and adds a taint indicating the problem, preventing new Pods from being scheduled onto it [S1]. If the node remains unreachable, after a default 5\u2011minute wait the node controller triggers API\u2011initiated eviction of all Pods on that node, unless rate\u2011limiting or connectivity issues prevent evictions [S1][S2].",
+      "contexts": [
+        "[KUBERNETES | kubernetes/concepts/architecture/nodes.md | Nodes > Node controller]\n## Node controller  \nThe node {{< glossary_tooltip text=\"controller\" term_id=\"controller\" >}} is a\nKubernetes control plane component that manages various aspects of nodes.  \nThe node controller has multiple roles in a node's life. The first is assigning a\nCIDR block to the node when it is registered (if CIDR assignment is turned on).  \nThe second is keeping the node controller's internal list of nodes up to date with\nthe cloud provider's list of available machines. When running in a cloud\nenvironment and whenever a node is unhealthy, the node controller asks the cloud\nprovider if the VM for that node is still available. If not, the node\ncontroller deletes the node from its list of nodes.  \nThe third is monitoring the nodes' health. The node controller is\nresponsible for:  \n- In the case that a node becomes unreachable, updating the `Ready` condition\nin the Node's `.status` field. In this case the node controller sets the\n`Ready` condition to `Unknown`.\n- If a node remains unreachable: triggering\n[API-initiated eviction](/docs/concepts/scheduling-eviction/api-eviction/)\nfor all of the Pods on the unr",
+        "[KUBERNETES | kubernetes/concepts/architecture/nodes.md | Nodes > Node controller > Rate limits on eviction]\n(none of the nodes in the cluster are healthy). In such a\ncase, the node controller assumes that there is some problem with connectivity\nbetween the control plane and the nodes, and doesn't perform any evictions.\n(If there has been an outage and some nodes reappear, the node controller does\nevict pods from the remaining nodes that are unhealthy or unreachable).  \nThe node controller is also responsible for evicting pods running on nodes with\n`NoExecute` taints, unless those pods tolerate that taint.\nThe node controller also adds {{< glossary_tooltip text=\"taints\" term_id=\"taint\" >}}\ncorresponding to node problems like node unreachable or not ready. This means\nthat the scheduler won't place Pods onto unhealthy nodes.",
+        "[KUBERNETES | kubernetes/concepts/scheduling-eviction/taint-and-toleration.md | Taints and Tolerations > Taint based Evictions]\nthe kubelet on the node. The decision to delete the pods cannot be communicated to\nthe kubelet until communication with the API server is re-established. In the meantime,\nthe pods that are scheduled for deletion may continue to run on the partitioned node.  \n> **Note:**\nThe control plane limits the rate of adding new taints to nodes. This rate limiting\nmanages the number of evictions that are triggered when many nodes become unreachable at\nonce (for example: if there is a network disruption).\n{{< /note >}}  \nYou can specify `tolerationSeconds` for a Pod to define how long that Pod stays bound\nto a failing or unresponsive Node.  \nFor example, you might want to keep an application with a lot of local state\nbound to node for a long time in the event of network partition, hoping\nthat the partition will recover and thus the pod eviction can be avoided.\nThe toleration you set for that Pod might look like:"
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 4705.0,
+      "ragas": {
+        "faithfulness": 0.5,
+        "context_recall": 1.0,
+        "context_precision": 0.5
+      }
+    },
+    {
+      "id": "eks-01",
+      "category": "single_service",
+      "question": "How does IAM Roles for Service Accounts (IRSA) grant AWS IAM permissions to pods in Amazon EKS?",
+      "ground_truth": "IRSA associates an OIDC provider with the EKS cluster and binds an IAM role trust policy to a Kubernetes ServiceAccount, injecting AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE so pods exchange projected tokens via STS AssumeRoleWithWebIdentity.",
+      "should_refuse": false,
+      "answer": "IAM roles for service accounts associate an IAM role with a Kubernetes service account and configure pods to use that service account, allowing the pod\u2019s containers to obtain temporary AWS credentials automatically. The applications in the pod then sign AWS API requests with those credentials, granting the pod the IAM permissions defined in the associated role\u3010S2\u3011. [S1]",
+      "contexts": [
+        "[AWS-EKS | aws-eks/manage-access/aws-access/service-accounts.md | Granting {aws} Identity and Access Management permissions to workloads on Amazon Elastic Kubernetes Service clusters]\n# Granting {aws} Identity and Access Management permissions to workloads on Amazon Elastic Kubernetes Service clusters  \nAmazon EKS provides two ways to grant {aws} Identity and Access Management permissions to workloads that run in Amazon EKS clusters: _IAM roles for service accounts_, and _EKS Pod Identities_.  \n*IAM roles for service accounts*::\n_IAM roles for service accounts (IRSA)_ configures Kubernetes applications running on {aws} with fine-grained IAM permissions to access various other {aws} resources such as Amazon S3 buckets, Amazon DynamoDB tables, and more. You can run multiple applications together in the same Amazon EKS cluster, and ensure each application has only the minimum set of permissions that it needs. IRSA was built to support various Kubernetes deployment options supported by {aws} such as Amazon EKS, Amazon EKS Anywhere, Red Hat OpenShift Service on {aws}, and self managed Kubernetes clusters on Amazon EC2 instances. Thus, IRSA was built using foundational {aws} services lik",
+        "[AWS-EKS | aws-eks/manage-access/aws-access/iam-roles-for-service-accounts.md | IAM roles for service accounts]\n# IAM roles for service accounts\n:info_titleabbrev: Credentials with IRSA  \n[abstract]\n--\nLearn how applications in your Pods can access {aws} services.\n--  \n[TIP]\nhttps://aws-experience.com/emea/smb/events/series/get-hands-on-with-amazon-eks?trk=4a9b4147-2490-4c63-bc9f-f8a84b122c8c&sc_channel=el[Register] for upcoming Amazon EKS workshops.  \nApplications in a Pod's containers can use an {aws} SDK or the {aws} CLI to make API requests to {aws} services using {aws} Identity and Access Management (IAM) permissions. Applications must sign their {aws} API requests with {aws} credentials. *IAM roles for service accounts (IRSA)* provide the ability to manage credentials for your applications, similar to the way that Amazon EC2 instance profiles provide credentials to Amazon EC2 instances. Instead of creating and distributing your {aws} credentials to the containers or using the Amazon EC2 instance's role, you associate an IAM role with a Kubernetes service account and configure your Pods to use the service account. You can't use IAM roles for service accounts with <<eks-outpost",
+        "[AWS-EKS | aws-eks/manage-access/aws-access/service-accounts.md | Granting {aws} Identity and Access Management permissions to workloads on Amazon Elastic Kubernetes Service clusters > Comparing EKS Pod Identity and IRSA]\n## Comparing EKS Pod Identity and IRSA  \nAt a high level, both EKS Pod Identity and IRSA enable you to grant IAM permissions to applications running on Kubernetes clusters. But they are fundamentally different in how you configure them, the limits supported, and features enabled. Below, we compare some of the key facets of both solutions.  \n[NOTE]\n{aws} recommends using EKS Pod Identities to grant access to {aws} resources to your pods whenever possible. For more information, see <<pod-identities>>.  \n[%header,cols=\"3\"]\n|===\n|Attribute\n|EKS Pod Identity\n|IRSA  \n|Role extensibility\n|You have to setup each role once to establish trust with the newly-introduced Amazon EKS service principal `pods.eks.amazonaws.com`. After this one-time step, you don't need to update the role's trust policy each time that it is used in a new cluster.\n|You have to update the IAM role's trust policy with the new EKS cluster OIDC provider endpoint each time you want to use the role in a n"
+      ],
+      "refused": false,
+      "citations_count": 1,
+      "latency_ms": 4854.7,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 0.8333
+      }
+    },
+    {
+      "id": "eks-02",
+      "category": "single_service",
+      "question": "What are the key differences between EKS Pod Identity and IAM Roles for Service Accounts (IRSA)?",
+      "ground_truth": "EKS Pod Identity uses a cluster-level EKS Pod Identity Agent DaemonSet and EKS API associations instead of per-cluster OIDC providers, allowing one IAM role trusting ://amazonaws.com to be reused across multiple clusters.",
+      "should_refuse": false,
+      "answer": "EKS Pod Identity establishes trust once with the `pods.eks.amazonaws.com` service principal and does not require per\u2011cluster OIDC provider setup, whereas IRSA requires updating each role\u2019s trust policy with the new cluster\u2019s OIDC provider endpoint and is limited by a default global quota of 100 OIDC providers per account [S1].  \nPod Identity avoids STS API calls by having the EKS service deliver credentials directly to pods, while IRSA relies on applications calling the `AssumeRoleWithWebIdentity` STS API, which can lead to throttling if calls are excessive [S2].  \nAdditionally, Pod Identity has no trust\u2011policy size limit, whereas IRSA\u2019s trust policy is limited to 2048 characters, typically allowing only 4\u20138 service\u2011account relationships per role [S2].",
+      "contexts": [
+        "[AWS-EKS | aws-eks/manage-access/aws-access/service-accounts.md | Granting {aws} Identity and Access Management permissions to workloads on Amazon Elastic Kubernetes Service clusters > Comparing EKS Pod Identity and IRSA]\n## Comparing EKS Pod Identity and IRSA  \nAt a high level, both EKS Pod Identity and IRSA enable you to grant IAM permissions to applications running on Kubernetes clusters. But they are fundamentally different in how you configure them, the limits supported, and features enabled. Below, we compare some of the key facets of both solutions.  \n[NOTE]\n{aws} recommends using EKS Pod Identities to grant access to {aws} resources to your pods whenever possible. For more information, see <<pod-identities>>.  \n[%header,cols=\"3\"]\n|===\n|Attribute\n|EKS Pod Identity\n|IRSA  \n|Role extensibility\n|You have to setup each role once to establish trust with the newly-introduced Amazon EKS service principal `pods.eks.amazonaws.com`. After this one-time step, you don't need to update the role's trust policy each time that it is used in a new cluster.\n|You have to update the IAM role's trust policy with the new EKS cluster OIDC provider endpoint each time you want to use the role in a n",
+        "[AWS-EKS | aws-eks/manage-access/aws-access/service-accounts.md | Granting {aws} Identity and Access Management permissions to workloads on Amazon Elastic Kubernetes Service clusters > Comparing EKS Pod Identity and IRSA]\nalability\n|EKS Pod Identity doesn't require users to define trust relationship between IAM role and service account in the trust policy, so this limit doesn't apply.\n|In IRSA, you define the trust relationship between an IAM role and service account in the role's trust policy. By default, the length of trust policy size is `2048`. This means that you can typically define 4 trust relationships in a single trust policy. While you can get the trust policy length limit increased, you are typically limited to a max of 8 trust relationships within a single trust policy.  \n|STS API Quota Usage\n|EKS Pod Identity simplifies delivery of {aws} credentials to your pods, and does not require your code make calls with the {aws} Security Token Service (STS) directly. The EKS service handles role assumption, and delivers credentials to applications written using the {aws} SDK in your pods without your pods communicating with {aws} STS or using STS API Quota.\n|In IRSA, application",
+        "[AWS-EKS | aws-eks/workloads/add-ons-iam.md | IAM roles for Amazon EKS add-ons]\nidentity associations to manage IAM permissions for add-ons. The previous method, IAM roles for service accounts (IRSA), is still supported. You can specify both an IRSA `serviceAccountRoleArn` and a pod identity association for an add-on. If the EKS pod identity agent is installed on the cluster, the `serviceAccountRoleArn` will be ignored, and EKS will use the provided pod identity association. If Pod Identity is not enabled, the `serviceAccountRoleArn` will be used.\n* If you update the pod identity associations for an existing add-on, Amazon EKS initiates a rolling restart of the add-on pods.  \ninclude::retreive-iam-info.adoc[leveloffset=+1]  \ninclude::update-addon-role.adoc[leveloffset=+1]  \ninclude::remove-addon-role.adoc[leveloffset=+1]  \ninclude::addon-id-troubleshoot.adoc[leveloffset=+1]"
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 5050.2,
+      "ragas": {
+        "faithfulness": 0.3333,
+        "context_recall": 1.0,
+        "context_precision": 0.8333
+      }
+    },
+    {
+      "id": "eks-03",
+      "category": "single_service",
+      "question": "How does the Amazon VPC CNI plugin assign IP addresses to pods in Amazon EKS?",
+      "ground_truth": "The Amazon VPC CNI plugin attaches Elastic Network Interfaces (ENIs) to EC2 worker nodes and allocates secondary private IPv4 addresses or /28 prefixes directly from the VPC subnet CIDR to pods.",
+      "should_refuse": false,
+      "answer": "The Amazon VPC CNI plugin runs on each EC2 node and creates elastic network interfaces (ENIs) that are attached to the node, then assigns a private IPv4 or IPv6 address from the VPC to each pod\u202f[S1]. By default it assigns one IP address per pod, attaching that address to an ENI that handles all inbound and outbound traffic for the pod\u202f[S2].",
+      "contexts": [
+        "[AWS-EKS | aws-eks/networking/managing-vpc-cni.md | Assign IPs to Pods with the Amazon VPC CNI]\n# Assign IPs to Pods with the Amazon VPC CNI\n:info_titleabbrev: Amazon VPC CNI  \n[abstract]\n--\nDiscover how the Amazon VPC CNI plugin for Kubernetes add-on works to assign private IP addresses and create network interfaces for Pods and services in your Amazon EKS cluster.\n--  \n[TIP]\nhttps://aws-experience.com/emea/smb/events/series/get-hands-on-with-amazon-eks?trk=4a9b4147-2490-4c63-bc9f-f8a84b122c8c&sc_channel=el[Register] for upcoming Amazon EKS workshops.  \n[TIP]\nWith Amazon EKS Auto Mode, you don't need to install or upgrade networking add-ons. Auto Mode includes pod networking and load balancing capabilities.  \nFor more information, see <<automode>>.  \nThe Amazon VPC CNI plugin for Kubernetes add-on is deployed on each Amazon EC2 node in your Amazon EKS cluster. The add-on creates link:AWSEC2/latest/UserGuide/using-eni.html[elastic network interfaces,type=\"documentation\"] and attaches them to your Amazon EC2 nodes. The add-on also assigns a private `IPv4` or `IPv6` address from your VPC to each Pod.  \nA version of the add-on is deployed with each Fargate node in your cluster, but yo",
+        "[AWS-EKS | aws-eks/networking/pod-multiple-network-interfaces.md | Attach multiple network interfaces to Pods]\n# Attach multiple network interfaces to Pods\n:info_titleabbrev: Multiple interfaces  \n[abstract]\n--\nLearn how to use VPC CNI to attach multiple network interfaces to a Pod in Amazon EKS for advanced networking scenarios with high bandwidth. You can configure a workload and the VPC CNI assigned IP addresses from every NIC on the EC2 instance to each pod. The application can make concurrent connections to use the bandwidth from each NIC. Every network interface is configured in the same subnet and security groups as the node.\n--  \nBy default, the Amazon VPC CNI plugin assigns one IP address to each pod. This IP address is attached to an _elastic network interface_ that handles all incoming and outgoing traffic for the pod. To increase the bandwidth and packet per second rate performance, you can use the _Multi-NIC feature_ of the VPC CNI to configure a multi-homed pod. A multi-homed pod is a single Kubernetes pod that uses multiple network interfaces (and multiple IP addresses). By running a multi-homed pod, you can spread its application traffic across multiple network inte",
+        "[AWS-EKS | aws-eks/networking/cni-subnet-selection.md | Configure subnet selection for Pod IP addresses]\n# Configure subnet selection for Pod IP addresses\n:info_titleabbrev: Subnet selection  \n[abstract]\n--\nUnderstand how to configure subnet selection for elastic network interfaces and Pod IP address allocation using the Amazon Virtual Private Cloud (Amazon VPC) CNI plugin for Kubernetes.\n--  \n*Applies to*: Linux nodes with Amazon EC2 instances  \nThe Amazon VPC CNI plugin for Kubernetes creates secondary elastic network interfaces (ENIs) on your nodes and assigns IP addresses from those ENIs to Pods. By default, the VPC CNI creates secondary ENIs in the same subnet as the node's primary network interface. You can control which subnets the VPC CNI uses for Pod IP addresses through the following methods:  \n* *Enhanced subnet discovery* \u2013 The VPC CNI automatically discovers and uses subnets tagged with `kubernetes.io/role/cni` in the same VPC and Availability Zone. Requires VPC CNI version 1.18.0 or later. We recommend this method for most use cases.\n* *Custom networking* \u2013 Manually specify subnets and security groups per Availability Zone using `ENIConfig` custom resources. For more "
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 4537.8,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "eks-04",
+      "category": "single_service",
+      "question": "What is the difference between EKS Managed Node Groups and AWS Fargate for running workloads in Amazon EKS?",
+      "ground_truth": "EKS Managed Node Groups provision and manage EC2 worker nodes in your AWS account supporting custom AMIs and DaemonSets, whereas AWS Fargate runs each pod in an isolated serverless microVM without DaemonSet or privileged pod support.",
+      "should_refuse": false,
+      "answer": "EKS Managed Node Groups run on Amazon\u202fEC2 instances that you must provision, maintain, and update (including AMI and Kubernetes version), whereas with AWS\u202fFargate you do not manage nodes, AMIs, or Kubernetes version yourself\u202f[S3].  \nFargate provides a serverless experience where each Pod is billed by its CPU and memory configuration and runs without custom AMIs, custom CNI, or support for DaemonSets, HostPort, or HostNetwork\u202f[S3].",
+      "contexts": [
+        "[AWS-EKS | aws-eks/what-is/eks-architecture.md | Compute]\n# Compute  \nIn addition to the control plane, an Amazon EKS cluster has a set of worker machines called nodes. Selecting the appropriate Amazon EKS cluster node type is crucial for meeting your specific requirements and optimizing resource utilization. Amazon EKS offers the following primary node types:  \n*EKS Auto Mode*::\n<<automode,EKS Auto Mode>> extends {aws} management beyond the control plane to include the data plane, automating cluster infrastructure management. It integrates core Kubernetes capabilities as built-in components, including compute autoscaling, networking, load balancing, DNS, storage, and GPU support. EKS Auto Mode dynamically manages nodes based on workload demands, using immutable AMIs with enhanced security features. It automates updates and upgrades while respecting Pod Disruption Budgets, and includes managed components that would otherwise require add-on management. This option is ideal for users who want to leverage {aws} expertise for day-to-day operations, minimize operational overhead, and focus on application development rather than infrastructure management.  \n*{aws} Fargate*::\n<<fargate,Fa",
+        "[AWS-EKS | aws-eks/what-is/common-use-cases.md | Common use cases in Amazon EKS]\nss applications*::\nUse link:fargate/[{aws} Fargate,type=\"marketing\"] with Amazon EKS to run serverless applications. This means you can focus solely on application development, while Amazon EKS and Fargate handle the underlying infrastructure.  \n*Executing machine learning workloads*::\nAmazon EKS is compatible with popular machine learning frameworks such as https://www.tensorflow.org/[TensorFlow], https://mxnet.apache.org/[MXNet], and https://pytorch.org/[PyTorch]. With GPU support, you can handle even complex machine learning tasks effectively.  \n*Deploying consistently on-premises and in the cloud*::\nTo simplify running Kubernetes in on-premises environments, you can use the same Amazon EKS clusters, features, and tools to run self-managed nodes on <<eks-outposts,{aws} Outposts>> or can use <<hybrid-nodes-overview,Amazon EKS Hybrid Nodes>> with your own infrastructure. For self-contained, air-gapped environments, you can use link:eks/eks-anywhere/[Amazon EKS Anywhere,type=\"marketing\"] to automate Kubernetes cluster lifecycle management on your own infrastructure.  \n*Running cost-effective batch proc",
+        "[AWS-EKS | aws-eks/nodes/fargate.md | Fargate Comparison Table]\n|Can deploy your own custom AMI to nodes\n|No  \n|Can deploy your own custom CNI to nodes\n|No  \n|Must update node AMI on your own\n|No  \n|Must update node Kubernetes version on your own\n|No \u2013 You don't manage nodes.  \n|Can use Amazon EBS storage with Pods\n|No  \n|Can use Amazon EFS storage with Pods\n|<<efs-csi,Yes>>  \n|Can use Amazon FSx for Lustre storage with Pods\n|No  \n|Can use Network Load Balancer for services\n|Yes, when using the <<network-load-balancer,Create a network load balancer>>  \n|Pods can run in a public subnet\n|No  \n|Can assign different VPC security groups to individual Pods\n|Yes  \n|Can run Kubernetes DaemonSets\n|No  \n|Support `HostPort` and `HostNetwork` in the Pod manifest\n|No  \n|{aws} Region availability\n|link:general/latest/gr/eks.html[Some Amazon EKS supported regions,type=\"documentation\"]  \n|Can run containers on Amazon EC2 dedicated hosts\n|No  \n|Pricing\n|Cost of an individual Fargate memory and CPU configuration. Each Pod has its own cost. For more information, see link:fargate/pricing/[{aws} Fargate pricing,type=\"marketing\"].\n|===  \n[.topic]\ninclude::fargate-getting-started.adoc[leveloffset=+1]  \ni"
+      ],
+      "refused": false,
+      "citations_count": 1,
+      "latency_ms": 12591.4,
+      "ragas": {
+        "faithfulness": 0.7333,
+        "context_recall": 0.0,
+        "context_precision": 0.5833
+      }
+    },
+    {
+      "id": "etcd-01",
+      "category": "single_service",
+      "question": "How does etcd configure Raft heartbeat interval and leader election timeout, and what ratio is recommended?",
+      "ground_truth": "etcd configures --heartbeat-interval (default 100ms) and --election-timeout (default 1000ms), recommending election-timeout be at least 5 to 10 times the heartbeat-interval to prevent spurious leader elections.",
+      "should_refuse": false,
+      "answer": "etcd configures the Raft heartbeat interval with the `--heartbeat-interval` flag (or `ETCD_HEARTBEAT_INTERVAL` env var) and the leader election timeout with `--election-timeout` (or `ETCD_ELECTION_TIMEOUT`), both expressed in milliseconds\u3010S3\u3011. By default the heartbeat interval is\u202f100\u202fms and the election timeout is\u202f1000\u202fms, and the recommended setting is to make the election timeout at least five times the heartbeat interval\u3010S2\u3011. The heartbeat interval itself should be set to roughly the average round\u2011trip time between members, typically 0.5\u20131.5\u202f\u00d7\u202fRTT\u3010S1\u3011. [S1]",
+      "contexts": [
+        "[ETCD-CNCF | etcd-cncf/tuning.md | Tuning > Time parameters]\n## Time parameters  \nThe underlying distributed consensus protocol relies on two separate time parameters to ensure that nodes can handoff leadership if one stalls or goes offline. The first parameter is called the *Heartbeat Interval*. This is the frequency with which the leader will notify followers that it is still the leader.\nFor best practices, the parameter should be set around round-trip time between members. By default, etcd uses a `100ms` heartbeat interval.  \nThe second parameter is the *Election Timeout*. This timeout is how long a follower node will go without hearing a heartbeat before attempting to become leader itself. By default, etcd uses a `1000ms` election timeout.  \nAdjusting these values is a trade off. The value of heartbeat interval is recommended to be around the maximum of average round-trip time (RTT) between members, normally around 0.5-1.5x the round-trip time. If heartbeat interval is too low, etcd will send unnecessary messages that increase the usage of CPU and network resources. On the other side, a too high heartbeat interval leads to high election timeout. Higher election timeout takes lo",
+        "[ETCD-CNCF | etcd-cncf/faq.md | FAQ > Performance > What does the etcd warning \"failed to send out heartbeat on time\" mean?]\non cause is CPU starvation. If monitoring of the machine\u2019s CPU usage shows heavy utilization, there may not be enough compute capacity for etcd. Moving etcd to dedicated machine, increasing process resource isolation  with cgroups, or renicing the etcd server process into a higher priority can usually solve the problem.  \nA slow network can also cause this issue. If network metrics among the etcd machines shows long latencies or high drop rate, there may not be enough network capacity for etcd. Moving etcd members to a less congested network will typically solve the problem. However, if the etcd cluster is deployed across data centers, long latency between members is expected. For such deployments, tune the `heartbeat-interval` configuration to roughly match the round trip time between the machines, and the `election-timeout` configuration to be at least 5 * `heartbeat-interval`. See [tuning documentation][tuning] for detailed information.  \nIf none of the above suggestions clear the warnings, please [open an issue][new_issue] with detailed logging, monitorin",
+        "[ETCD-CNCF | etcd-cncf/tuning.md | Tuning > Time parameters]\n```sh\n# Command line arguments:\n$ etcd --heartbeat-interval=100 --election-timeout=500\n\n# Environment variables:\n$ ETCD_HEARTBEAT_INTERVAL=100 ETCD_ELECTION_TIMEOUT=500 etcd\n```\n\nThe values are specified in milliseconds."
+      ],
+      "refused": false,
+      "citations_count": 1,
+      "latency_ms": 4088.0,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 0.5
+      }
+    },
+    {
+      "id": "etcd-02",
+      "category": "single_service",
+      "question": "Why does etcd require an odd number of cluster members and how is fault tolerance calculated?",
+      "ground_truth": "etcd requires a majority quorum of (N/2)+1 members under Raft; an odd cluster of 2f+1 members tolerates f failures whereas adding an even member increases quorum size without improving fault tolerance.",
+      "should_refuse": false,
+      "answer": "etcd requires an odd number of members because quorum is defined as (n/2)+1, and an odd\u2011sized cluster ensures that adding a node always increases the number of votes needed for quorum, preventing situations where a new node could cause permanent loss of quorum if it fails to join correctly [S1].  \nFault tolerance is calculated as the number of node failures the cluster can sustain while still maintaining a majority, which is (majority\u202f\u2013\u202f1); the table shows that an odd\u2011size cluster tolerates the same failures as the next even size but with fewer nodes, e.g., a 3\u2011node cluster tolerates 1 failure, a 5\u2011node cluster tolerates 2, etc. [S2]",
+      "contexts": [
+        "[ETCD-CNCF | etcd-cncf/faq.md | FAQ > Deployment > Why an odd number of cluster members?]\n### Why an odd number of cluster members?  \nAn etcd cluster needs a majority of nodes, a quorum, to agree on updates to the cluster state. For a cluster with n members, quorum is (n/2)+1. For any odd-sized cluster, adding one node will always increase the number of nodes necessary for quorum. Although adding a node to an odd-sized cluster appears better since there are more machines, the fault tolerance is worse since exactly the same number of nodes may fail without losing quorum but there are more nodes that can fail. If the cluster is in a state where it can't tolerate any more failures, adding a node before removing nodes is dangerous because if the new node fails to register with the cluster (e.g., the address is misconfigured), quorum will be permanently lost.",
+        "[ETCD-CNCF | etcd-cncf/faq.md | FAQ > Deployment > What is failure tolerance?]\n### What is failure tolerance?  \nAn etcd cluster operates so long as a member quorum can be established. If quorum is lost through transient network failures (e.g., partitions), etcd automatically and safely resumes once the network recovers and restores quorum; Raft enforces cluster consistency. For power loss, etcd persists the Raft log to disk; etcd replays the log to the point of failure and resumes cluster participation. For permanent hardware failure, the node may be removed from the cluster through [runtime reconfiguration][runtime reconfiguration].  \nIt is recommended to have an odd number of members in a cluster. An odd-size cluster tolerates the same number of failures as an even-size cluster but with fewer nodes. The difference can be seen by comparing even and odd sized clusters:  \n| Cluster Size | Majority | Failure Tolerance |\n|:-:|:-:|:-:|\n| 1 | 1 | 0 |\n| 2 | 2 | 0 |\n| 3 | 2 | 1 |\n| 4 | 3 | 1 |\n| 5 | 3 | 2 |\n| 6 | 4 | 2 |\n| 7 | 4 | 3 |\n| 8 | 5 | 3 |\n| 9 | 5 | 4 |  \nAdding a member to bring the size of cluster up to an even number doesn't buy additional fault tolerance. Likewise, during a n",
+        "[ETCD-CNCF | etcd-cncf/faq.md | FAQ > Operation > Should I add a member before removing an unhealthy member?]\n### Should I add a member before removing an unhealthy member?  \nWhen replacing an etcd node, it's important  to remove the member first and then add its replacement.  \netcd employs distributed consensus based on a quorum model; (n/2)+1 members, a majority, must agree on a proposal before it can be committed to the cluster. These proposals include key-value updates and membership changes. This model totally avoids any possibility of split brain inconsistency. The downside is permanent quorum loss is catastrophic.  \nHow this applies to membership: If a 3-member cluster has 1 downed member, it can still make forward progress because the quorum is 2 and 2 members are still live. However, adding a new member to a 3-member cluster will increase the quorum to 3 because 3 votes are required for a majority of 4 members. Since the quorum increased, this extra member buys nothing in terms of fault tolerance; the cluster is still one node failure away from being unrecoverable.  \nAdditionally, that new member is risky because it may turn out to be misconfigured or incapable of joining "
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 4568.4,
+      "ragas": {
+        "faithfulness": 0.6667,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "etcd-03",
+      "category": "single_service",
+      "question": "How do you compact revision history and defragment etcd storage when the database exceeds its space quota?",
+      "ground_truth": "Operators compact old revisions with etcdctl compaction <rev>, reclaim disk blocks per member using etcdctl defrag, and clear the NOSPACE alarm with etcdctl alarm disarm.",
+      "should_refuse": false,
+      "answer": "Compact the etcd history by retrieving the current revision and running `etcdctl compact $rev`\u202f[ S2 ], then defragment each member with `etcdctl defrag` to release internal fragmentation\u202f[ S2 ][ S3 ], and finally disarm the NOSPACE alarm with `etcdctl alarm disarm` so writes are accepted again\u202f[ S2 ].",
+      "contexts": [
+        "[ETCD-CNCF | etcd-cncf/faq.md | FAQ > Operation > What does \"mvcc: database space exceeded\" mean and how do I fix it?]\n### What does \"mvcc: database space exceeded\" mean and how do I fix it?  \nThe [multi-version concurrency control][api-mvcc] data model in etcd keeps an exact history of the keyspace. Without periodically compacting this history (e.g., by setting `--auto-compaction`), etcd will eventually exhaust its storage space. If etcd runs low on storage space, it raises a space quota alarm to protect the cluster from further writes. So long as the alarm is raised, etcd responds to write requests with the error `mvcc: database space exceeded`.  \nTo recover from the low space quota alarm:  \n1. [Compact][maintenance-compact] etcd's history.\n2. [Defragment][maintenance-defragment] every etcd endpoint.\n3. [Disarm][maintenance-disarm] the alarm.",
+        "[ETCD-CNCF | etcd-cncf/op-guide/maintenance.md | Maintenance > Space quota]\n```sh\n# get current revision\n$ rev=$(ETCDCTL_API=3 etcdctl --endpoints=:2379 endpoint status --write-out=\"json\" | egrep -o '\"revision\":[0-9]*' | egrep -o '[0-9].*')\n# compact away all old revisions\n$ ETCDCTL_API=3 etcdctl compact $rev\ncompacted revision 1516\n# defragment away excessive space\n$ ETCDCTL_API=3 etcdctl defrag\nFinished defragmenting etcd member[127.0.0.1:2379]\n# disarm alarm\n$ ETCDCTL_API=3 etcdctl alarm disarm\nmemberID:13803658152347727308 alarm:NOSPACE\n# test puts are allowed again\n$ ETCDCTL_API=3 etcdctl put newkey 123\nOK\n```\n\nThe metric `etcd_mvcc_db_total_size_in_use_in_bytes` indicates the actual database usage after a history compaction, while `etcd_debugging_mvcc_db_total_size_in_bytes` shows the database size including free space waiting for defragmentation. The latter increases only when the former is close to it, meaning when both of these metrics are close to the quota, a history compaction is required to avoid triggering the space quota.  \n`etcd_debugging_mvcc_db_total_size_in_bytes` is renamed to `etcd_mvcc_db_total_size_in_bytes` from v3.4.  \n{{% alert title=\"Note\" color=\"info\" %}",
+        "[ETCD-CNCF | etcd-cncf/op-guide/maintenance.md | Maintenance > Defragmentation]\n## Defragmentation  \nAfter compacting the keyspace, the backend database may exhibit internal fragmentation. Any internal fragmentation is space that is free to use by the backend but still consumes storage space. Compacting old revisions internally fragments `etcd` by leaving gaps in backend database. Fragmented space is available for use by `etcd` but unavailable to the host filesystem. In other words, deleting application data does not reclaim the space on disk.  \nThe process of defragmentation releases this storage space back to the file system. Defragmentation is issued on a per-member basis so that cluster-wide latency spikes may be avoided.  \nTo defragment an etcd member, use the `etcdctl defrag` command:\n\n```sh\n$ etcdctl defrag\nFinished defragmenting etcd member[127.0.0.1:2379]\n```\n\n{{% alert title=\"Note\" color=\"warning\" %}}\nNote that defragmentation to a live member blocks the system from reading and writing data while rebuilding its states\n{{% /alert %}}.  \n{{% alert title=\"Note\" color=\"warning\" %}}\nNote that defragmentation request does not get replicated over cluster. That is, the request is"
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 4820.1,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 1.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "cross-01",
+      "category": "cross_service",
+      "question": "How does Kubernetes use etcd to store cluster state and support watch event streams?",
+      "ground_truth": "Kubernetes persists all cluster objects in etcd as key-value entries under /registry and relies on etcd's MVCC revision history and watch API to stream ordered state changes to the API server and controllers.",
+      "should_refuse": false,
+      "answer": "Kubernetes persists its entire cluster state, including configuration data for service discovery and management, in etcd, relying on etcd\u2019s strong consistency to ensure correct scheduling and operation of services [S1]. The Kubernetes API server creates watches on etcd via the etcd watch API, using long\u2011running gRPC streams that multiplex multiple watches and deliver real\u2011time watch events to trigger configuration changes across the cluster [S2].",
+      "contexts": [
+        "[ETCD-CNCF | etcd-cncf/learning/why.md | etcd versus other key-value stores > Use cases]\n## Use cases  \n- Container Linux by CoreOS: Applications running on [Container Linux][container-linux] get automatic, zero-downtime Linux kernel updates. Container Linux uses [locksmith] to coordinate updates. Locksmith implements a distributed semaphore over etcd to ensure only a subset of a cluster is rebooting at any given time.\n- [Kubernetes][kubernetes] stores configuration data into etcd for service discovery and cluster management; etcd's consistency is crucial for correctly scheduling and operating services. The Kubernetes API server persists cluster state into etcd. It uses etcd's watch API to monitor the cluster and roll out critical configuration changes.",
+        "[ETCD-CNCF | etcd-cncf/learning/api.md | etcd API > Watch API > Watch streams]\n### Watch streams  \nWatches are long-running requests and use gRPC streams to stream event data. A watch stream is bi-directional; the client writes to the stream to establish watches and reads to receive watch events. A single watch stream can multiplex many distinct watches by tagging events with per-watch identifiers. This multiplexing helps reducing the memory footprint and connection overhead on the core etcd cluster.  \nTo read about guarantees made about watch events, please read [etcd api guarantees][watch-api-guarantees].  \nA client creates a watch by sending a `WatchCreateRequest` over a stream returned by `Watch`:\n\n```protobuf\nmessage WatchCreateRequest {\nbytes key = 1;\nbytes range_end = 2;\nint64 start_revision = 3;\nbool progress_notify = 4;\n\nenum FilterType {\nNOPUT = 0;\nNODELETE = 1;\n}\nrepeated FilterType filters = 5;\nbool prev_kv = 6;\n}\n```",
+        "[ETCD-CNCF | etcd-cncf/dev-guide/api_reference_v3.md | API reference]\nnot rely on this in production with ongoing transactions, since Hash operation does not hold MVCC locks. Use \"HashKV\" API instead for \"key\" bucket consistency checks. |\n| HashKV | HashKVRequest | HashKVResponse | HashKV computes the hash of all MVCC keys up to a given revision. It only iterates \"key\" bucket in backend storage. |\n| Snapshot | SnapshotRequest | SnapshotResponse | Snapshot sends a snapshot of the entire backend from a member over a stream to a client. |\n| MoveLeader | MoveLeaderRequest | MoveLeaderResponse | MoveLeader requests current leader node to transfer its leadership to transferee. |\n| Downgrade | DowngradeRequest | DowngradeResponse | Downgrade requests downgrades, verifies feasibility or cancels downgrade on the cluster version. Supported since etcd 3.5. |  \n##### service `Watch` (api/etcdserverpb/rpc.proto)  \n| Method | Request Type | Response Type | Description |\n| ------ | ------------ | ------------- | ----------- |\n| Watch | WatchRequest | WatchResponse | Watch watches for events happening or that have happened. Both input and output are streams; the input stream is for creating and ca"
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 4512.5,
+      "ragas": {
+        "faithfulness": 1.0,
+        "context_recall": 0.0,
+        "context_precision": 1.0
+      }
+    },
+    {
+      "id": "cross-02",
+      "category": "cross_service",
+      "question": "How does Envelope Encryption protect Kubernetes Secrets at rest in Amazon EKS?",
+      "ground_truth": "Kubernetes encrypts Secrets in etcd using a local Data Encryption Key (DEK), and Amazon EKS envelope encryption wraps that DEK with an AWS KMS customer managed key (CMK).",
+      "should_refuse": false,
+      "answer": "Envelope encryption adds a managed layer of protection for all Kubernetes API data, including Secrets, by using an AWS\u2011owned or customer\u2011managed KMS key to encrypt a data\u2011encryption key (DEK) that the API server generates at startup and caches for deriving single\u2011use DEKs to encrypt each secret before it is stored in etcd [S1][S3]. This ensures that Secrets at rest are encrypted with keys that are themselves protected by KMS, providing defense\u2011in\u2011depth without any user action required [S1][S3].",
+      "contexts": [
+        "[AWS-EKS | aws-eks/security/envelope-encryption.md | Default envelope encryption for all Kubernetes API Data]\n# Default envelope encryption for all Kubernetes API Data  \n//GDC\n//Insert Images\n//Existing clusters and new clusters  \nAmazon Elastic Kubernetes Service (Amazon EKS) provides default envelope encryption for all Kubernetes API data in EKS clusters running Kubernetes version 1.28 or higher.  \nEnvelope encryption protects the data you store with the Kubernetes API server. For example, envelope encryption applies to the configuration of your Kubernetes cluster, such as `ConfigMaps`.\nEnvelope encryption does not apply to data on nodes or EBS volumes.\nEKS previously supported encrypting Kubernetes secrets, and now this envelope encryption extends to all Kubernetes API data.  \nThis provides a managed, default experience that implements defense-in-depth for your Kubernetes applications and doesn't require any action on your part.  \nAmazon EKS uses {aws} link:kms/latest/developerguide/overview.html[\"Key Management Service (KMS)\",type=\"documentation\"] with https://kubernetes.io/docs/tasks/administer-cluster/kms-provider/#configuring-the-kms-provider-kms-v2[Kubernetes KMS provider v",
+        "[AWS-EKS | aws-eks/security/enable-kms.md | Encrypt Kubernetes secrets with KMS on existing clusters]\n# Encrypt Kubernetes secrets with KMS on existing clusters\n:info_titleabbrev: Enable secret encryption  \n[abstract]\n--\nLearn how to enable Kubernetes secrets encryption with {aws} KMS on an existing Amazon EKS cluster, ensuring secure storage of sensitive data.\n--  \n[IMPORTANT]\n*Deprecation notice:* This procedure is deprecated and only applies to EKS clusters running Kubernetes version 1.27 or lower. If you are running Kubernetes version 1.28 or higher, Amazon EKS protects your Kubernetes secrets with envelope encryption by default. For more information, see <<envelope-encryption>>.  \nIf you enable https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/[secrets encryption], the Kubernetes secrets are encrypted using the {aws} KMS key that you select. The KMS key must meet the following conditions:  \n* Symmetric\n* Can encrypt and decrypt data\n* Created in the same {aws} Region as the cluster\n* If the KMS key was created in a different account, the link:IAM/latest/UserGuide/id_roles.html#iam-term-principal[IAM principal,type=\"documentation\"] must have access to the KMS key",
+        "[AWS-EKS | aws-eks/security/envelope-encryption.md | Frequently asked questions > How does envelope encryption work in Amazon EKS?]\n## How does envelope encryption work in Amazon EKS?  \n// Do we want to expose this detail?  \nAt startup, the cluster API server generates a data encryption key (DEK) from a secret seed combined with randomly generated data.\nAlso at startup, the API server makes a call to the KMS plugin to encrypt the DEK using a remote key encryption key (KEK) from {aws} KMS.\nThis is a one-time call executed at startup of the API server and on KEK rotation. The API server then caches the encrypted DEK seed.\nAfter this, the API server uses the cached DEK seed to generate other single use DEKs based on a Key Derivation Function (KDF).\nEach of these generated DEKs is then used only once to encrypt a single Kubernetes resource before it's stored in etcd.  \nIt's important to note that there are additional calls made from the API server to verify the health and normal functionality of the {aws} KMS integration.\nThese additional health checks are visible in your {aws} CloudTrail."
+      ],
+      "refused": false,
+      "citations_count": 2,
+      "latency_ms": 5079.1,
+      "ragas": {
+        "faithfulness": 0.8333,
+        "context_recall": 1.0,
+        "context_precision": 0.3333
+      }
+    },
+    {
+      "id": "refuse-01",
+      "category": "out_of_corpus",
+      "question": "How does HashiCorp Terraform implement state locking using Amazon DynamoDB conditional writes?",
+      "ground_truth": "OUT_OF_CORPUS_REFUSAL",
+      "should_refuse": true,
+      "answer": "Insufficient verified documentation found in the indexed corpus to answer with high confidence.",
+      "contexts": [],
+      "refused": true,
+      "citations_count": 0,
+      "latency_ms": 17618.3
+    },
+    {
+      "id": "refuse-02",
+      "category": "out_of_corpus",
+      "question": "How does Redis Cluster calculate CRC16 hash slots across 16384 keyspace partitions?",
+      "ground_truth": "OUT_OF_CORPUS_REFUSAL",
+      "should_refuse": true,
+      "answer": "Insufficient verified documentation found in the indexed corpus to answer with high confidence.",
+      "contexts": [],
+      "refused": true,
+      "citations_count": 0,
+      "latency_ms": 18366.8
+    }
+  ]
+}
