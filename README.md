@@ -1,10 +1,21 @@
+<div align="center">
+
 # SysArch-RAG
 
-[![CI - Tests](https://github.com)](https://github.com)
+**Cyclic Corrective RAG & Hybrid Retrieval Engine for Systems Architecture**
 
-> Grounded Cloud & Distributed Systems Intelligence for Kubernetes, AWS EKS, and etcd—combining Qdrant Hybrid RRF retrieval, Cohere rerank-v3.5 cross-encoder pruning, two-tier semantic caching, and a self-correcting LangGraph CRAG engine with verified `[S1]..[S3]` citation grounding.
+[![CI - Tests](https://shields.io)](https://github.com)
 
-**Live Demo:** [Production Console (Vercel)](https://sys-arch-rag.vercel.app) · [FastAPI Swagger Docs (Railway)](https://sysarch-rag-production.up.railway.app/docs)
+![Demo](https://shields.io)
+![Orchestration](https://shields.io)
+![Retrieval](https://shields.io)
+![Reranker](https://shields.io)
+
+[Live demo](https://sys-arch-rag.vercel.app) · [API docs](https://sysarch-rag-production.up.railway.app/docs) · [System architecture](#system-architecture) · [Tech stack](#tech-stack) · [Quickstart](#quickstart)
+
+</div>
+
+> Grounded Cloud & Distributed Systems Intelligence for **Kubernetes**, **AWS EKS**, and **etcd**—combining Qdrant Hybrid RRF retrieval, Cohere `rerank-v3.5` cross-encoder pruning, two-tier semantic caching, and a self-correcting LangGraph CRAG engine with verified `[S1]..[S3]` citation grounding.
 
 ---
 
