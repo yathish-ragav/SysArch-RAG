@@ -4,12 +4,12 @@
 
 *Grounded Cloud & Distributed Systems Intelligence for Kubernetes, AWS EKS, and etcd*
 
-[![CI - Tests](https://github.com)](https://github.com)
+[![CI - Tests](https://://github.com/actions/workflows/eval-gate.yml/badge.svg)](https://://github.com/actions/workflows/eval-gate.yml)
 
-![Demo](https://shields.io) ![LangGraph](https://shields.io)
-![Qdrant](https://shields.io) ![Cohere](https://shields.io)
+![Demo](https://img.shields.io/badge/DEMO-LIVE-2ea44f?style=for-the-badge) ![LangGraph](https://img.shields.io/badge/LANGGRAPH-CYCLIC_CRAG-1d76db?style=for-the-badge&logo=langchain&logoColor=white)
+![Qdrant](https://img.shields.io/badge/QDRANT-HYBRID_RRF-e5a50a?style=for-the-badge&logo=qdrant&logoColor=white) ![Cohere](https://img.shields.io/badge/COHERE-RERANK_V3.5-ea580c?style=for-the-badge)
 
-[Live demo](https://vercel.app) · [API docs](https://railway.app) · [System architecture](#system-architecture) · [Tech stack](#tech-stack) · [Quickstart](#quickstart)
+[Live demo](https://sys-arch-rag.vercel.app) · [API docs](https://sysarch-rag-production.up.railway.app/docs) · [System architecture](#system-architecture) · [Tech stack](#tech-stack) · [Quickstart](#quickstart)
 
 </div>
 
