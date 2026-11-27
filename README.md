@@ -1,22 +1,10 @@
-<div align="center">
-
 # SysArch-RAG
-
-**Cyclic Corrective RAG & Hybrid Retrieval Engine for Systems Architecture**
 
 [![CI - Tests](https://github.com)](https://github.com)
 
-![Python](https://shields.io)
-![FastAPI](https://shields.io)
-![LangGraph](https://shields.io)
-![Qdrant](https://shields.io)
-![Next.js](https://shields.io)
+> Grounded Cloud & Distributed Systems Intelligence for Kubernetes, AWS EKS, and etcd—combining Qdrant Hybrid RRF retrieval, Cohere rerank-v3.5 cross-encoder pruning, two-tier semantic caching, and a self-correcting LangGraph CRAG engine with verified `[S1]..[S3]` citation grounding.
 
-[Live demo](https://sys-arch-rag.vercel.app) · [API docs](https://sysarch-rag-production.up.railway.app/docs) · [System architecture](#system-architecture) · [Tech stack](#tech-stack) · [Quickstart](#quickstart)
-
-</div>
-
-> Production-grade agentic RAG system featuring two-tier semantic caching, Qdrant hybrid RRF retrieval (`BAAI/bge-base-en-v1.5` + sparse BM25 IDF), Cohere cross-encoder reranking, and a self-correcting LangGraph CRAG loop with verified `[S1]..[S3]` citation extraction.
+**Live Demo:** [Production Console (Vercel)](https://sys-arch-rag.vercel.app) · [FastAPI Swagger Docs (Railway)](https://sysarch-rag-production.up.railway.app/docs)
 
 ---
 
@@ -57,122 +45,32 @@ User Query
 
 | Layer | Technologies |
 | :--- | :--- |
-| **Agentic Orchestration** | `LangGraph` (Cyclic CRAG State Machine), `LangChain`, `LangSmith`, `Langfuse` |
-| **LLM & Fine-Tuning** | `Groq` (`openai/gpt-oss-120b` synthesis, `openai/gpt-oss-20b` grader), `QLoRA` (`Qwen2.5-3B-Instruct`, `PEFT` / `TRL`) |
-| **Vector DB & Retrieval** | `Qdrant Cloud` (Hybrid RRF: `BAAI/bge-base-en-v1.5` 768d + `Qdrant/bm25` IDF), `Cohere` (`rerank-v3.5`) |
-| **Caching & Backend API** | `FastAPI` (Typed SSE Streaming), `Upstash Redis` (L1 Exact Cache + Rate Limiter), `Pydantic v2` |
-| **Frontend Console** | `Next.js 16`, `React 19`, `TypeScript`, `Tailwind CSS` (Deployed on Vercel) |
-| **Evaluation & DevOps** | `RAGAS` (`Faithfulness`, `Context Recall`, `Context Precision`), `Pytest` (25/25), `Docker`, `GitHub Actions CI`, `Railway` |
-
----
-
-## Project Structure
-
-```text
-sysarch-rag/
-├── .github/workflows/
-│   └── eval-gate.yml          # Automated pytest & retrieval CI gate
-├── scripts/
-│   └── fetch_docs.py          # Corpus ingestion & documentation crawler
-├── src/
-│   ├── api/
-│   │   ├── cache.py           # L1 Redis & L2 Qdrant semantic cache
-│   │   └── main.py            # FastAPI app, /v1/query & /v1/query/stream SSE
-│   ├── core/
-│   │   ├── config.py          # Pydantic Settings & environment validation
-│   │   ├── observability.py   # LangSmith / Langfuse tracing hooks
-│   │   └── schemas.py         # Typed request, response & citation models
-│   ├── evaluation/
-│   │   └── run_ragas.py       # Offline RAGAS faithfulness & recall benchmark
-│   ├── graph/
-│   │   ├── nodes.py           # Analyzer, retriever, grader, rewriter & synthesizer
-│   │   ├── state.py           # LangGraph TypedDict state definition
-│   │   └── workflow.py        # Cyclic CRAG state machine & conditional edges
-│   ├── ingestion/
-│   │   ├── chunker.py         # Fence-safe Markdown & code-block splitter
-│   │   └── indexer.py         # Atomic Qdrant collection & alias swapper
-│   └── retrieval/
-│       ├── hybrid_search.py   # Dense + sparse BM25 RRF fusion query
-│       └── reranker.py        # Cohere rerank-v3.5 & gap-pruning filter
-├── tests/
-│   ├── test_graph.py          # CRAG routing, retry limits & synthesis tests
-│   ├── test_ingestion.py      # Chunker fence integrity & metadata tests
-│   └── test_retrieval.py      # Hybrid search & reranker threshold tests
-├── Dockerfile                 # Multi-stage production container
-├── docker-compose.yml         # Local Qdrant + Redis + API stack
-└── pyproject.toml             # uv dependency & tool configuration
-```
+| **Agentic Orchestration** | LangGraph (Cyclic CRAG State Machine), LangChain, LangSmith, Langfuse |
+| **LLM & Fine-Tuning** | Groq (`openai/gpt-oss-120b` synthesis, `openai/gpt-oss-20b` grader), QLoRA (`Qwen2.5-3B-Instruct`, `PEFT` / `TRL`) |
+| **Vector DB & Retrieval** | Qdrant Cloud (Hybrid RRF: `BAAI/bge-base-en-v1.5` 768d + `Qdrant/bm25` IDF), Cohere `rerank-v3.5` |
+| **Caching & Backend API** | FastAPI (Typed SSE Streaming), Upstash Redis (L1 Exact Cache + Rate Limiter), Pydantic v2 |
+| **Frontend Console** | Next.js 16, React 19, TypeScript, Tailwind CSS (Deployed on Vercel) |
+| **Evaluation & DevOps** | RAGAS (`Faithfulness`, `Context Recall`, `Context Precision`), Pytest (25/25), Docker, GitHub Actions CI, Railway |
 
 ---
 
 ## Quickstart
 
-### 1. Prerequisites
-* Python `3.11+` and [`uv`](https://astral.sh)
-* API keys for **Groq**, **Qdrant Cloud**, **Cohere**, and **Upstash Redis**
-
-### 2. Installation
 ```bash
 git clone https://github.com
 cd SysArch-RAG
-uv sync --all-extras
+uv sync --frozen
 cp .env.example .env
-```
 
-### 3. Ingest Corpus & Build Index
-```bash
-uv run python scripts/fetch_docs.py
-uv run python -m src.ingestion.indexer
-```
+# Run unit & retrieval test suite
+uv run pytest -v
 
-### 4. Run the API Server
-```bash
+# Start FastAPI server
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-Interactive Swagger documentation is available at `http://localhost:8000/docs`.
-
----
-
-## API Reference
-
-### `POST /v1/query`
-Executes the full CRAG pipeline and returns a structured JSON response with verified citations and latency telemetry.
-
-```bash
-curl -X POST "https://railway.app" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How does Kubernetes NetworkPolicy isolate pod ingress traffic?",
-    "top_k": 3
-  }'
-```
-
-### `POST /v1/query/stream`
-Streams real-time Server-Sent Events (`status`, `sources`, `token`, `done`) for step-by-step UI progress tracking in the Next.js console.
-
----
-
-## Evaluation & Testing
-
-Run the unit and retrieval test suite:
-```bash
-uv run pytest -v
-```
-
-Run the RAGAS evaluation pipeline against the golden architecture dataset:
-```bash
-uv run python -m src.evaluation.run_ragas
-```
-
-| Metric | Target | Description |
-| :--- | :--- | :--- |
-| **Faithfulness** | `>= 0.90` | Claims in the generated answer strictly supported by `[S1]..[S3]` context |
-| **Context Precision** | `>= 0.85` | Relevant chunks ranked at the top after Cohere `rerank-v3.5` gap pruning |
-| **Context Recall** | `>= 0.85` | Ground-truth architectural facts captured by Hybrid RRF retrieval |
-| **Unit & Graph Suite** | `25 / 25` | Automated CI gate covering chunking, RRF retrieval, caching, and CRAG edges |
 
 ---
 
 ## License
 
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
+MIT License — see [`LICENSE`](LICENSE) for details.
