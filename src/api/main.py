@@ -119,18 +119,18 @@ def _summarize_node(node_name: str, out: dict) -> str:
     if node_name == "analyze_query":
         svcs = ", ".join(out.get("services", list())) or "all"
         return f"Routed services: {svcs}"
-    if node_name == "retrieve":
+    if node_name in ("retrieve", "retrieve_and_rerank"):
         n = len(out.get("reranked_chunks", list()))
         return f"Retrieved & reranked {n} chunks"
-    if node_name == "grade":
+    if node_name in ("grade", "grade_documents"):
         g = out.get("grade_result")
         if g is not None:
             return f"Sufficient={g.is_sufficient} (conf={g.confidence:.2f})"
-    if node_name == "rewrite":
+    if node_name in ("rewrite", "rewrite_query"):
         if out.get("rewrite_exhausted"):
             return "Rewrite budget exhausted"
         return f"Rewritten query (attempt {out.get('retry_count', 1)})"
-    if node_name == "synthesize":
+    if node_name in ("synthesize", "synthesize_answer"):
         c = len(out.get("citations", list()))
         return f"Synthesized answer with {c} grounded citations"
     return "Completed"

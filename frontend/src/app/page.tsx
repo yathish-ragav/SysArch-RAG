@@ -220,7 +220,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {(loading || displayedSteps.length > 0 || result) && (
+        {(loading || result || (!error && displayedSteps.length > 0)) && (
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-12">
             <div className="space-y-6 lg:col-span-8">
               <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-6">

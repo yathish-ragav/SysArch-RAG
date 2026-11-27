@@ -112,6 +112,7 @@ async def lookup_cache(
         if raw:
             resp = RAGResponse.model_validate_json(raw)
             resp.cache_hit = True
+                resp.cache_tier = "exact_redis"
             return resp
     except Exception as exc:
         logger.warning("Redis L1 lookup skipped: %s", exc)
