@@ -63,6 +63,16 @@ User Query
 
 ---
 
+
+### 3. End-to-End RAGAS Quality Gate (`data/eval_report.json` — 15 Golden Cases)
+
+| Evaluation Metric | Score | Notes |
+| :--- | :---: | :--- |
+| **Refusal Accuracy** | **1.0000 (100%)** | `15/15` cases (`2/2` out-of-corpus blocked, `13/13` valid answered) |
+| **Context Recall** | **0.8462** | `11/13` answerable cases achieved `1.00` recall |
+| **Faithfulness** | **0.8385** | Evaluated with `openai/gpt-oss-20b` judge |
+| **Context Precision** | **0.8141** | Hybrid RRF + Cohere `rerank-v3.5` |
+
 ## Project Structure
 
 ```text
