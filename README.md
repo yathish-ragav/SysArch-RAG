@@ -1,14 +1,23 @@
 # SysArch-RAG
 
+[![CI Pipeline](https://://github.com/actions/workflows/eval-gate.yml/badge.svg)](https://://github.com/actions)
+[![Python 3.11](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
+[![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 > **Live Production Console:** [https://sys-arch-rag.vercel.app](https://sys-arch-rag.vercel.app)  
-> **Live FastAPI Backend & Swagger Docs:** [https://railway.app](https://railway.app)
+> **Live FastAPI Backend & Swagger Docs:** [https://sysarch-rag-production.up.railway.app/docs](https://sysarch-rag-production.up.railway.app/docs)
 
+## Tech Stack
 
-**Self-Correcting Corrective RAG (CRAG) Engine for Cloud & Distributed Systems Documentation**
-
-SysArch-RAG is a production-grade retrieval and reasoning engine covering **Kubernetes (`v1.32`)**, **AWS EKS**, and **etcd (`v3.5`)** operator documentation. Unlike single-pass cosine-similarity chatbots, it routes queries across service namespaces, fuses dense semantic vectors with BM25 IDF lexical search, cross-encoder reranks candidates, grades context sufficiency in a cyclic **LangGraph** state machine, and enforces deterministic inline source citations (`[S1]`–`[S3]`).
-
----
+| Layer | Technologies |
+| :--- | :--- |
+| **Agentic Orchestration** | LangGraph (Cyclic CRAG State Machine), LangChain, LangSmith, Langfuse |
+| **LLM & Fine-Tuning** | Groq (`openai/gpt-oss-120b` synthesis, `openai/gpt-oss-20b` grader), QLoRA (`Qwen2.5-3B-Instruct`, PEFT / TRL) |
+| **Vector DB & Retrieval** | Qdrant Cloud (Hybrid RRF: `BAAI/bge-base-en-v1.5` 768d + `Qdrant/bm25` IDF), Cohere `rerank-v3.5` |
+| **Caching & Backend API** | FastAPI (Typed SSE Streaming), Upstash Redis (L1 Exact Cache + Rate Limiter), Pydantic v2 |
+| **Frontend Console** | Next.js 16, React 19, TypeScript, Tailwind CSS (Deployed on Vercel) |
+| **Evaluation & DevOps** | RAGAS (`Faithfulness`, `Context Recall`, `Context Precision`), Pytest (25/25), Docker, GitHub Actions CI, Railway |
 
 ## System Architecture
 
