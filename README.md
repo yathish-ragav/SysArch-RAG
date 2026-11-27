@@ -4,11 +4,11 @@
 
 *Grounded Cloud & Distributed Systems Intelligence for Kubernetes, AWS EKS, and etcd*
 
-[![CI - Tests](.github/badges/ci.svg)](https://github.com)
+[![CI - Tests](https://github.com/ci.svg?raw=true)](https://github.com)
 
-![Demo](.github/badges/demo.svg) ![LangGraph](.github/badges/langgraph.svg)
-![Qdrant](.github/badges/qdrant.svg)
-![Cohere](.github/badges/cohere.svg)
+![Demo](https://github.com/demo.svg?raw=true) ![LangGraph](https://github.com/langgraph.svg?raw=true)
+![Qdrant](https://github.com/qdrant.svg?raw=true)
+![Cohere](https://github.com/cohere.svg?raw=true)
 
 [Live demo](https://sys-arch-rag.vercel.app) · [API docs](https://sysarch-rag-production.up.railway.app/docs) · [System architecture](#system-architecture) · [Tech stack](#tech-stack) · [Quickstart](#quickstart)
 
