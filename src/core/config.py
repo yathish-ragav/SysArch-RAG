@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     # API hardening (all overridable via .env / Render env vars)
     # CORS_ORIGINS: comma-separated browser origins allowed to call the API. In production set this to
     # your Vercel URL, e.g. "https://sysarch-rag.vercel.app". Never use "*" on a public endpoint.
+    ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     # Per-IP fixed window (60s) limit on /v1/query and /v1/query/stream.
     RATE_LIMIT_PER_MIN: int = 12

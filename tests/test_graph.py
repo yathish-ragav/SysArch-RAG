@@ -247,3 +247,131 @@ def test_cors_uses_allowlist_not_wildcard():
     bad = client.options("/v1/query", headers={**headers, "Origin": "https://evil.example"})
     assert ok.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert "access-control-allow-origin" not in bad.headers
+
+
+async def test_grader_fallback_on_llm_exception(monkeypatch):
+    class _BoomGrader:
+        def with_structured_output(self, *_a, **_kw):
+            return self
+
+        async def ainvoke(self, _messages):
+            raise RuntimeError("grader json truncated")
+
+    monkeypatch.setattr(nodes, "_fast_llm", lambda: _BoomGrader())
+    out = await nodes.grade_documents_node({"query": "etcd quorum", "reranked_chunks": [_chunk("a")]})
+    assert out["grade_result"].is_sufficient is True
+
+
+def test_stream_error_event_and_sse_headers(monkeypatch):
+    _stub_stream_deps(monkeypatch, None)
+    monkeypatch.setattr(api_main, "_CONCURRENCY_GUARD", api_main.asyncio.Semaphore(4))
+
+    async def _no_cap():
+        return None
+
+    async def _boom_stream(*_a, **_kw):
+        raise RuntimeError("stream boom")
+        yield {}
+
+    monkeypatch.setattr(api_main, "_enforce_daily_cap", _no_cap)
+    monkeypatch.setattr(api_main.rag_graph, "astream", _boom_stream)
+    resp = TestClient(api_main.app).post("/v1/query/stream", json={"query": "what is etcd?"})
+    assert resp.status_code == 200
+    assert resp.headers.get("cache-control") == "no-cache"
+    assert resp.headers.get("x-accel-buffering") == "no"
+    assert '"type": "error"' in resp.text
+
+
+async def test_indexer_atomic_alias_swap_and_prune(monkeypatch):
+    import numpy as np
+    from src.ingestion import indexer
+
+    ops_recorded = []
+    deleted_cols = []
+
+    class _FakeEmbed:
+        def __init__(self, **_kw):
+            pass
+
+        def embed(self, texts):
+            for _ in texts:
+                yield np.zeros(4, dtype=np.float32)
+
+    class _FakeSparse:
+        def __init__(self, **_kw):
+            pass
+
+        def embed(self, texts):
+            class _SV:
+                indices = np.array([1], dtype=np.int64)
+                values = np.array([1.0], dtype=np.float32)
+
+            for _ in texts:
+                yield _SV()
+
+    class _FakeClient:
+        def __init__(self, **_kw):
+            pass
+
+        async def collection_exists(self, _name):
+            return False
+
+        async def create_collection(self, **_kw):
+            pass
+
+        async def create_payload_index(self, **_kw):
+            pass
+
+        async def upsert(self, **_kw):
+            pass
+
+        async def get_collection(self, _name):
+            class _Info:
+                points_count = 1
+
+            return _Info()
+
+        async def get_aliases(self):
+            class _Alias:
+                alias_name = indexer.settings.QDRANT_COLLECTION
+
+            class _Res:
+                aliases = [_Alias()]
+
+            return _Res()
+
+        async def update_collection_aliases(self, change_aliases_operations):
+            ops_recorded.extend(change_aliases_operations)
+
+        async def get_collections(self):
+            class _Col:
+                def __init__(self, name):
+                    self.name = name
+
+            class _Res:
+                collections = [
+                    _Col(f"{indexer.settings.QDRANT_COLLECTION}_20260101_000001"),
+                    _Col(f"{indexer.settings.QDRANT_COLLECTION}_20260102_000001"),
+                    _Col(f"{indexer.settings.QDRANT_COLLECTION}_20260103_000001"),
+                ]
+
+            return _Res()
+
+        async def delete_collection(self, name):
+            deleted_cols.append(name)
+
+        async def close(self):
+            pass
+
+    monkeypatch.setattr(indexer, "TextEmbedding", _FakeEmbed)
+    monkeypatch.setattr(indexer, "SparseTextEmbedding", _FakeSparse)
+    monkeypatch.setattr(indexer, "AsyncQdrantClient", _FakeClient)
+
+    chunk = DocumentChunk(
+        chunk_id="12345678-1234-5678-1234-567812345678",
+        content="etcd quorum test",
+        metadata=DocMetadata(service="etcd", version="3.5", file_path="quorum.md", section_hierarchy="Quorum"),
+    )
+    await indexer.index_chunks([chunk], batch_size=10)
+    assert len(ops_recorded) == 2
+    assert deleted_cols == [f"{indexer.settings.QDRANT_COLLECTION}_20260101_000001"]
