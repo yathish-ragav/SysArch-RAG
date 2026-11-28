@@ -13,3 +13,8 @@ sysarch_rag_bundle.txt
 .ruff_cache/
 
 .env.local
+
+qdrant_data/
+qdrant_storage/
+redis_data/
+sysarch_source_code.txt

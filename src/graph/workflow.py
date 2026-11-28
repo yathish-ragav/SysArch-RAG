@@ -1,5 +1,7 @@
 import asyncio
+
 from langgraph.graph import END, START, StateGraph
+
 from src.core.config import settings
 from src.core.observability import flush_langfuse, get_langfuse_run_config
 from src.graph.nodes import (
@@ -62,10 +64,14 @@ rag_graph = build_rag_graph()
 
 async def _smoke_test() -> None:
     try:
-        run_cfg = get_langfuse_run_config(session_id="hardened-smoke-test", tags=["hardened-v1"])
+        run_cfg = get_langfuse_run_config(
+            session_id="hardened-smoke-test", tags=["hardened-v1"]
+        )
         run_cfg["recursion_limit"] = 15
         result = await rag_graph.ainvoke(
-            {"query": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?"},
+            {
+                "query": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?"
+            },
             config=run_cfg,
         )
         print(
@@ -73,7 +79,10 @@ async def _smoke_test() -> None:
             f"Retries: {result.get('retry_count', 0)} | Refused: {result.get('refused')} | "
             f"Reason: {result.get('refusal_reason')}"
         )
-        print("Citations:", [(c.ref_id, c.file_path, c.section) for c in result.get("citations", [])])
+        print(
+            "Citations:",
+            [(c.ref_id, c.file_path, c.section) for c in result.get("citations", [])],
+        )
         print("\n--- ANSWER ---\n", result.get("final_answer"))
     finally:
         await close_cohere_client()

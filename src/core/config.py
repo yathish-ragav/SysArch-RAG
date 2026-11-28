@@ -18,26 +18,26 @@ class Settings(BaseSettings):
     QDRANT_COLLECTION: str = "sysarch_docs"
     REDIS_URL: str = "redis://localhost:6379"
 
-    # API hardening (all overridable via .env / Render env vars)
-    # CORS_ORIGINS: comma-separated browser origins allowed to call the API. In production set this to
-    # your Vercel URL, e.g. "https://sysarch-rag.vercel.app". Never use "*" on a public endpoint.
+    # API hardening
     ENV: str = "development"
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
-    # Per-IP fixed window (60s) limit on /v1/query and /v1/query/stream.
+    EXPOSE_DOCS_IN_PROD: bool = True
+    MAX_REQUEST_BYTES: int = 16384
+    TRUSTED_PROXY_HOPS: int = 1
     RATE_LIMIT_PER_MIN: int = 12
-    # Global UTC-day budget of full pipeline runs (cache misses) to protect Groq/Cohere free-tier quotas.
+    USER_RATE_LIMIT_PER_MIN: int = 15
     DAILY_QUERY_CAP: int = 400
 
     # LangSmith Observability
     LANGCHAIN_TRACING_V2: str = "true"
-    LANGCHAIN_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGCHAIN_ENDPOINT: str = "https://langchain.com"
     LANGCHAIN_API_KEY: str
     LANGCHAIN_PROJECT: str = "sysarch-rag"
 
     # Langfuse Cloud Observability
     LANGFUSE_PUBLIC_KEY: str
     LANGFUSE_SECRET_KEY: str
-    LANGFUSE_HOST: str = "https://us.cloud.langfuse.com"
+    LANGFUSE_HOST: str = "https://langfuse.com"
 
     # Model & Retrieval Thresholds
     DENSE_MODEL: str = "BAAI/bge-base-en-v1.5"

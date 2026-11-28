@@ -1,11 +1,9 @@
-
 import json
-from pathlib import Path
 import random
 import re
+from pathlib import Path
 
 from src.ingestion.chunker import chunk_markdown_file
-
 
 RAW_DIR = Path("data/raw_docs")
 OUT_DIR = Path("fine_tuning")
@@ -42,16 +40,10 @@ def _question_from_chunk(
     )
 
     if flags:
-        return (
-            f"How do you configure `{flags[0]}` "
-            f"for {topic} in {service}?"
-        )
+        return f"How do you configure `{flags[0]}` for {topic} in {service}?"
 
     if kinds:
-        return (
-            f"What is the role and behavior of `{kinds[0]}` "
-            f"in {service} ({topic})?"
-        )
+        return f"What is the role and behavior of `{kinds[0]}` in {service} ({topic})?"
 
     return f"Explain how {topic} works in {service}."
 
@@ -71,29 +63,23 @@ def build_dataset(
 
     # Collect eligible chunks from the raw documentation.
     for md_file in sorted(RAW_DIR.rglob("*.md")):
-
         for ch in chunk_markdown_file(md_file, RAW_DIR):
-
             if (
                 ch.metadata.service in by_service
                 and len(ch.content) >= 350
-                and "whatsnext"
-                not in ch.metadata.section_hierarchy.lower()
+                and "whatsnext" not in ch.metadata.section_hierarchy.lower()
             ):
-
                 by_service[ch.metadata.service].append(ch)
 
     examples: list[dict] = []
 
     # Generate positive and negative grading examples.
     for svc, pool in by_service.items():
-
         rng.shuffle(pool)
 
         selected = pool[:max_per_service]
 
         for idx, pos_ch in enumerate(selected):
-
             q = _question_from_chunk(
                 svc,
                 pos_ch.metadata.section_hierarchy,
@@ -103,11 +89,7 @@ def build_dataset(
             distractor = pool[(idx + 7) % len(pool)]
 
             # Positive example.
-            pos_ctx = (
-                f"{pos_ch.content[:1100]}\n\n"
-                f"---\n\n"
-                f"{distractor.content[:900]}"
-            )
+            pos_ctx = f"{pos_ch.content[:1100]}\n\n---\n\n{distractor.content[:900]}"
 
             pos_out = json.dumps(
                 {
@@ -147,11 +129,7 @@ def build_dataset(
             neg_a = pool[(idx + 13) % len(pool)]
             neg_b = pool[(idx + 29) % len(pool)]
 
-            neg_ctx = (
-                f"{neg_a.content[:1000]}\n\n"
-                f"---\n\n"
-                f"{neg_b.content[:1000]}"
-            )
+            neg_ctx = f"{neg_a.content[:1000]}\n\n---\n\n{neg_b.content[:1000]}"
 
             neg_out = json.dumps(
                 {
@@ -203,19 +181,13 @@ def build_dataset(
 
     # Write training dataset.
     (OUT_DIR / "train.jsonl").write_text(
-        "\n".join(
-            json.dumps(x)
-            for x in train_examples
-        ) + "\n",
+        "\n".join(json.dumps(x) for x in train_examples) + "\n",
         encoding="utf-8",
     )
 
     # Write validation dataset.
     (OUT_DIR / "val.jsonl").write_text(
-        "\n".join(
-            json.dumps(x)
-            for x in val_examples
-        ) + "\n",
+        "\n".join(json.dumps(x) for x in val_examples) + "\n",
         encoding="utf-8",
     )
 

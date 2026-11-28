@@ -1,7 +1,9 @@
 import asyncio
 from functools import lru_cache
+
 from fastembed import SparseTextEmbedding, TextEmbedding
 from qdrant_client import AsyncQdrantClient, models
+
 from src.core.config import settings
 from src.core.schemas import DocMetadata, DocumentChunk, ScoredChunk
 from src.ingestion.indexer import DENSE_VECTOR_NAME, SPARSE_VECTOR_NAME
@@ -23,7 +25,9 @@ def get_sparse_model() -> SparseTextEmbedding:
 def get_qdrant_client() -> AsyncQdrantClient:
     global _qdrant_client
     if _qdrant_client is None:
-        _qdrant_client = AsyncQdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY, timeout=20.0)
+        _qdrant_client = AsyncQdrantClient(
+            url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY, timeout=20.0
+        )
     return _qdrant_client
 
 
@@ -38,7 +42,9 @@ def _embed_sync(query: str) -> tuple[list[float], models.SparseVector]:
     dense = next(get_dense_model().embed([query])).tolist()
     sparse_iter = getattr(get_sparse_model(), "query_embed", get_sparse_model().embed)
     sparse_raw = next(sparse_iter([query]))
-    sparse = models.SparseVector(indices=sparse_raw.indices.tolist(), values=sparse_raw.values.tolist())
+    sparse = models.SparseVector(
+        indices=sparse_raw.indices.tolist(), values=sparse_raw.values.tolist()
+    )
     return dense, sparse
 
 
@@ -51,7 +57,9 @@ def _build_filter(services: list[str] | None = None) -> models.Filter | None:
     if not services:
         return None
     if len(services) == 1:
-        cond: models.Condition = models.FieldCondition(key="service", match=models.MatchValue(value=services[0]))
+        cond: models.Condition = models.FieldCondition(
+            key="service", match=models.MatchValue(value=services[0])
+        )
     else:
         cond = models.FieldCondition(key="service", match=models.MatchAny(any=services))
     return models.Filter(must=[cond])
@@ -63,15 +71,27 @@ async def hybrid_search(
     services: list[str] | None = None,
     precomputed: tuple[list[float], models.SparseVector] | None = None,
 ) -> list[ScoredChunk]:
-    dense_vec, sparse_vec = precomputed if precomputed is not None else await embed_query_async(query)
+    dense_vec, sparse_vec = (
+        precomputed if precomputed is not None else await embed_query_async(query)
+    )
     q_filter = _build_filter(services=services)
     prefetch_limit = max(top_k * 2, 40)
 
     response = await get_qdrant_client().query_points(
         collection_name=settings.QDRANT_COLLECTION,
         prefetch=[
-            models.Prefetch(query=dense_vec, using=DENSE_VECTOR_NAME, filter=q_filter, limit=prefetch_limit),
-            models.Prefetch(query=sparse_vec, using=SPARSE_VECTOR_NAME, filter=q_filter, limit=prefetch_limit),
+            models.Prefetch(
+                query=dense_vec,
+                using=DENSE_VECTOR_NAME,
+                filter=q_filter,
+                limit=prefetch_limit,
+            ),
+            models.Prefetch(
+                query=sparse_vec,
+                using=SPARSE_VECTOR_NAME,
+                filter=q_filter,
+                limit=prefetch_limit,
+            ),
         ],
         query=models.FusionQuery(fusion=models.Fusion.RRF),
         limit=top_k,

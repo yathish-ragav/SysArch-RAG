@@ -1,9 +1,17 @@
 from typing import TypedDict
-from src.core.schemas import Citation, GradeResult, RefusalReason, ScoredChunk
+
+from src.core.schemas import (
+    Citation,
+    DetailLevel,
+    GradeResult,
+    RefusalReason,
+    ScoredChunk,
+)
 
 
 class GraphState(TypedDict, total=False):
     query: str
+    detail_level: DetailLevel
     active_query: str
     sub_queries: list[str]
     services: list[str]

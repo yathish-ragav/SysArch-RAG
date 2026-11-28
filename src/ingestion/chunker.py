@@ -1,7 +1,9 @@
 import hashlib
-from pathlib import Path
 import re
+from pathlib import Path
+
 from langchain_text_splitters import MarkdownHeaderTextSplitter
+
 from src.core.schemas import DocMetadata, DocumentChunk
 
 SERVICE_VERSIONS: dict[str, str] = {
@@ -17,7 +19,7 @@ def _extract_frontmatter_and_body(text: str) -> tuple[str | None, str]:
     if not m:
         return None, text
     fm, body = m.group(1), text[m.end() :]
-    t_match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', fm, flags=re.M)
+    t_match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', fm, flags=re.MULTILINE)
     return (t_match.group(1).strip() if t_match else None), body
 
 
@@ -42,7 +44,9 @@ def _split_oversized_fence(fence_block: str, max_chars: int) -> list[str]:
     return parts
 
 
-def _split_preserving_code_blocks(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
+def _split_preserving_code_blocks(
+    text: str, max_chars: int = MAX_CHUNK_CHARS
+) -> list[str]:
     if len(text) <= max_chars:
         return [text.strip()] if text.strip() else []
     tokens = re.split(r"(```[\s\S]*?```)", text)
@@ -52,7 +56,11 @@ def _split_preserving_code_blocks(text: str, max_chars: int = MAX_CHUNK_CHARS) -
         if not token.strip():
             continue
         is_code = token.startswith("```") and token.endswith("```")
-        units = _split_oversized_fence(token.strip(), max_chars) if is_code else [p.strip() for p in token.split("\n\n") if p.strip()]
+        units = (
+            _split_oversized_fence(token.strip(), max_chars)
+            if is_code
+            else [p.strip() for p in token.split("\n\n") if p.strip()]
+        )
         for unit in units:
             if len(unit) > max_chars and not is_code:
                 for i in range(0, len(unit), max_chars):
@@ -76,7 +84,9 @@ def chunk_markdown_file(file_path: Path, raw_root: Path) -> list[DocumentChunk]:
     service_key = rel_path.parts[0]
     if service_key not in SERVICE_VERSIONS:
         return []
-    title, body = _extract_frontmatter_and_body(file_path.read_text(encoding="utf-8", errors="ignore"))
+    title, body = _extract_frontmatter_and_body(
+        file_path.read_text(encoding="utf-8", errors="ignore")
+    )
     if len(body.strip()) < 60:
         return []
     if title and not re.match(r"^\s*#\s+", body):
@@ -96,7 +106,9 @@ def chunk_markdown_file(file_path: Path, raw_root: Path) -> list[DocumentChunk]:
                 continue
             ctx_text = f"[{service_key.upper()} | {rel_path.as_posix()} | {section}]\n{sub_text}"
             content_sha = hashlib.sha1(sub_text.encode()).hexdigest()[:12]
-            digest = hashlib.sha256(f"{rel_path.as_posix()}:{ordinal}:{content_sha}".encode()).hexdigest()[:32]
+            digest = hashlib.sha256(
+                f"{rel_path.as_posix()}:{ordinal}:{content_sha}".encode()
+            ).hexdigest()[:32]
             uid = f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
             ordinal += 1
             chunks.append(
@@ -115,7 +127,9 @@ def chunk_markdown_file(file_path: Path, raw_root: Path) -> list[DocumentChunk]:
     return chunks
 
 
-def load_and_chunk_corpus(raw_root: Path = Path("data/raw_docs")) -> list[DocumentChunk]:
+def load_and_chunk_corpus(
+    raw_root: Path = Path("data/raw_docs"),
+) -> list[DocumentChunk]:
     all_chunks: list[DocumentChunk] = []
     for service in SERVICE_VERSIONS:
         service_dir = raw_root / service
@@ -123,6 +137,8 @@ def load_and_chunk_corpus(raw_root: Path = Path("data/raw_docs")) -> list[Docume
             continue
         md_files = sorted(service_dir.rglob("*.md"))
         service_chunks = [c for f in md_files for c in chunk_markdown_file(f, raw_root)]
-        print(f"Chunked {len(md_files)} files -> {len(service_chunks)} chunks for [{service}]")
+        print(
+            f"Chunked {len(md_files)} files -> {len(service_chunks)} chunks for [{service}]"
+        )
         all_chunks.extend(service_chunks)
     return all_chunks

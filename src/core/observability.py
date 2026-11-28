@@ -1,8 +1,10 @@
-from functools import lru_cache
 import os
+from functools import lru_cache
 from typing import Any
+
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
+
 from src.core.config import settings
 
 

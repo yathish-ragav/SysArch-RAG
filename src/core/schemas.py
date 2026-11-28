@@ -1,7 +1,9 @@
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 ServiceName = Literal["kubernetes", "aws-eks", "etcd-cncf"]
+DetailLevel = Literal["brief", "standard", "detailed"]
 RefusalReason = Literal["insufficient_context", "service_error"]
 
 SERVICE_ALIASES: dict[str, ServiceName] = {
@@ -69,29 +71,41 @@ class GradeResult(BaseModel):
 
 class Citation(BaseModel):
     ref_id: str
+    service: str = "unknown"
+    version: str = "unknown"
     file_path: str
-    section: str
+    section: str = ""
+    section_hierarchy: str = ""
+    source_url: str = ""
     snippet: str
+    full_text: str = ""
+
+    @model_validator(mode="after")
+    def _sync_sections(self) -> "Citation":
+        if not self.section_hierarchy and self.section:
+            self.section_hierarchy = self.section
+        if not self.section and self.section_hierarchy:
+            self.section = self.section_hierarchy
+        if not self.full_text and self.snippet:
+            self.full_text = self.snippet
+        return self
 
 
 class QueryRequest(BaseModel):
     query: str = Field(min_length=3, max_length=1500)
     service_filter: ServiceName | None = None
+    detail_level: DetailLevel = "standard"
     session_id: str | None = Field(default=None, pattern=r"^[\w-]{1,64}$")
 
     @field_validator("query", mode="before")
     @classmethod
     def strip_query(cls, v: object) -> object:
-        # Strip only real strings. Non-strings (e.g. JSON null) are passed through untouched so Pydantic
-        # rejects them; the old `str(v)` turned None into the valid-looking query "None".
-        # Stripping first also makes whitespace-only queries fail the min_length=3 check.
         return v.strip() if isinstance(v, str) else v
-
-
 
 
 class TraceStep(BaseModel):
     node: str
+    status: Literal["ok", "fallback", "retry", "error"] = "ok"
     duration_ms: float = Field(default=0.0)
     summary: str = Field(default="")
 

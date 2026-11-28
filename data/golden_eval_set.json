@@ -1,0 +1,150 @@
+[
+  {
+    "id": "k8s-01",
+    "category": "single_service",
+    "expected_services": [
+      "kubernetes"
+    ],
+    "should_refuse": false,
+    "question": "How do PodDisruptionBudgets protect workloads during a voluntary node drain in Kubernetes?",
+    "ground_truth": "A PodDisruptionBudget (PDB) limits the number of pods of a replicated application down simultaneously from voluntary disruptions such as kubectl drain by checking minAvailable or maxUnavailable before eviction."
+  },
+  {
+    "id": "k8s-02",
+    "category": "single_service",
+    "expected_services": [
+      "kubernetes"
+    ],
+    "should_refuse": false,
+    "question": "What are the differences between Readiness probes, Liveness probes, and Startup probes in Kubernetes?",
+    "ground_truth": "Liveness probes restart deadlocked containers, Readiness probes remove unready pods from Service endpoints, and Startup probes delay liveness and readiness checks until slow-starting containers finish initializing."
+  },
+  {
+    "id": "k8s-03",
+    "category": "single_service",
+    "expected_services": [
+      "kubernetes"
+    ],
+    "should_refuse": false,
+    "question": "How does Kubernetes NetworkPolicy control ingress and egress traffic for selected pods?",
+    "ground_truth": "Once a NetworkPolicy selects pods via podSelector and specifies Ingress or Egress in policyTypes, traffic in that direction is rejected unless explicitly allowed by podSelector, namespaceSelector, or ipBlock rules."
+  },
+  {
+    "id": "k8s-04",
+    "category": "single_service",
+    "expected_services": [
+      "kubernetes"
+    ],
+    "should_refuse": false,
+    "question": "What happens to running Pods when a Kubernetes node becomes unreachable or loses heartbeat with the control plane?",
+    "ground_truth": "After node-monitor-grace-period expires, the node Ready condition becomes Unknown, Kubernetes adds the node.kubernetes.io/unreachable NoExecute taint, and pods without tolerations are evicted after 300 seconds."
+  },
+  {
+    "id": "eks-01",
+    "category": "single_service",
+    "expected_services": [
+      "aws-eks"
+    ],
+    "should_refuse": false,
+    "question": "How does IAM Roles for Service Accounts (IRSA) grant AWS IAM permissions to pods in Amazon EKS?",
+    "ground_truth": "IRSA associates an OIDC provider with the EKS cluster and binds an IAM role trust policy to a Kubernetes ServiceAccount, injecting AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE so pods exchange projected tokens via STS AssumeRoleWithWebIdentity."
+  },
+  {
+    "id": "eks-02",
+    "category": "single_service",
+    "expected_services": [
+      "aws-eks"
+    ],
+    "should_refuse": false,
+    "question": "What are the key differences between EKS Pod Identity and IAM Roles for Service Accounts (IRSA)?",
+    "ground_truth": "EKS Pod Identity uses a cluster-level EKS Pod Identity Agent DaemonSet and EKS API associations instead of per-cluster OIDC providers, allowing one IAM role trusting ://amazonaws.com to be reused across multiple clusters."
+  },
+  {
+    "id": "eks-03",
+    "category": "single_service",
+    "expected_services": [
+      "aws-eks"
+    ],
+    "should_refuse": false,
+    "question": "How does the Amazon VPC CNI plugin assign IP addresses to pods in Amazon EKS?",
+    "ground_truth": "The Amazon VPC CNI plugin attaches Elastic Network Interfaces (ENIs) to EC2 worker nodes and allocates secondary private IPv4 addresses or /28 prefixes directly from the VPC subnet CIDR to pods."
+  },
+  {
+    "id": "eks-04",
+    "category": "single_service",
+    "expected_services": [
+      "aws-eks"
+    ],
+    "should_refuse": false,
+    "question": "What is the difference between EKS Managed Node Groups and AWS Fargate for running workloads in Amazon EKS?",
+    "ground_truth": "EKS Managed Node Groups provision and manage EC2 worker nodes in your AWS account supporting custom AMIs and DaemonSets, whereas AWS Fargate runs each pod in an isolated serverless microVM without DaemonSet or privileged pod support."
+  },
+  {
+    "id": "etcd-01",
+    "category": "single_service",
+    "expected_services": [
+      "etcd-cncf"
+    ],
+    "should_refuse": false,
+    "question": "How does etcd configure Raft heartbeat interval and leader election timeout, and what ratio is recommended?",
+    "ground_truth": "etcd configures --heartbeat-interval (default 100ms) and --election-timeout (default 1000ms), recommending election-timeout be at least 5 to 10 times the heartbeat-interval to prevent spurious leader elections."
+  },
+  {
+    "id": "etcd-02",
+    "category": "single_service",
+    "expected_services": [
+      "etcd-cncf"
+    ],
+    "should_refuse": false,
+    "question": "Why does etcd require an odd number of cluster members and how is fault tolerance calculated?",
+    "ground_truth": "etcd requires a majority quorum of (N/2)+1 members under Raft; an odd cluster of 2f+1 members tolerates f failures whereas adding an even member increases quorum size without improving fault tolerance."
+  },
+  {
+    "id": "etcd-03",
+    "category": "single_service",
+    "expected_services": [
+      "etcd-cncf"
+    ],
+    "should_refuse": false,
+    "question": "How do you compact revision history and defragment etcd storage when the database exceeds its space quota?",
+    "ground_truth": "Operators compact old revisions with etcdctl compaction <rev>, reclaim disk blocks per member using etcdctl defrag, and clear the NOSPACE alarm with etcdctl alarm disarm."
+  },
+  {
+    "id": "cross-01",
+    "category": "cross_service",
+    "expected_services": [
+      "kubernetes",
+      "etcd-cncf"
+    ],
+    "should_refuse": false,
+    "question": "How does Kubernetes use etcd to store cluster state and support watch event streams?",
+    "ground_truth": "Kubernetes persists all cluster objects in etcd as key-value entries under /registry and relies on etcd's MVCC revision history and watch API to stream ordered state changes to the API server and controllers."
+  },
+  {
+    "id": "cross-02",
+    "category": "cross_service",
+    "expected_services": [
+      "kubernetes",
+      "aws-eks"
+    ],
+    "should_refuse": false,
+    "question": "How does Envelope Encryption protect Kubernetes Secrets at rest in Amazon EKS?",
+    "ground_truth": "Kubernetes encrypts Secrets in etcd using a local Data Encryption Key (DEK), and Amazon EKS envelope encryption wraps that DEK with an AWS KMS customer managed key (CMK)."
+  },
+  {
+    "id": "refuse-01",
+    "category": "out_of_corpus",
+    "expected_services": [],
+    "should_refuse": true,
+    "question": "How does HashiCorp Terraform implement state locking using Amazon DynamoDB conditional writes?",
+    "ground_truth": "OUT_OF_CORPUS_REFUSAL"
+  },
+  {
+    "id": "refuse-02",
+    "category": "out_of_corpus",
+    "expected_services": [],
+    "should_refuse": true,
+    "question": "How does Redis Cluster calculate CRC16 hash slots across 16384 keyspace partitions?",
+    "ground_truth": "OUT_OF_CORPUS_REFUSAL"
+  }
+]

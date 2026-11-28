@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from src.ingestion.chunker import (
     MAX_CHUNK_CHARS,
     _extract_frontmatter_and_body,
@@ -15,7 +16,9 @@ def test_extract_frontmatter_title():
 
 
 def test_split_preserves_code_fences_under_ceiling():
-    yaml_block = "```yaml\n" + "\n".join(f"key_{i}: value_{i}" for i in range(90)) + "\n```"
+    yaml_block = (
+        "```yaml\n" + "\n".join(f"key_{i}: value_{i}" for i in range(90)) + "\n```"
+    )
     text = f"Intro paragraph.\n\n{yaml_block}\n\nOutro paragraph."
     chunks = _split_preserving_code_blocks(text, max_chars=MAX_CHUNK_CHARS)
     assert len(chunks) >= 2

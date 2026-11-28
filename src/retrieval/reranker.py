@@ -1,10 +1,13 @@
 import asyncio
-from collections import OrderedDict
 import logging
 import time
+from collections import OrderedDict
+
 import cohere
-from cohere.errors import TooManyRequestsError
 import httpx
+from cohere.errors import TooManyRequestsError
+
+from src.api.cache import get_redis_client
 from src.core.config import settings
 from src.core.schemas import ScoredChunk
 
@@ -14,9 +17,12 @@ _http_client: httpx.AsyncClient | None = None
 _cohere_client: cohere.AsyncClientV2 | None = None
 _rate_lock = asyncio.Lock()
 _last_call_ts: float = 0.0
-_MIN_INTERVAL_SEC: float = 6.8  # <= 8.8 calls/min (safe under Cohere Trial 10 req/min limit)
+_MIN_INTERVAL_SEC: float = 6.8  # <= 8.8 calls/min across workers
+_PACE_KEY = "sysarch:cohere:pace"
 _RERANK_CACHE_MAX = 256
-_rerank_cache: OrderedDict[tuple[str, tuple[str, ...], int], list[ScoredChunk]] = OrderedDict()
+_rerank_cache: OrderedDict[tuple[str, tuple[str, ...], int], list[ScoredChunk]] = (
+    OrderedDict()
+)
 
 
 def get_cohere_client() -> cohere.AsyncClientV2:
@@ -26,7 +32,9 @@ def get_cohere_client() -> cohere.AsyncClientV2:
             timeout=25.0,
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         )
-        _cohere_client = cohere.AsyncClientV2(api_key=settings.COHERE_API_KEY, httpx_client=_http_client)
+        _cohere_client = cohere.AsyncClientV2(
+            api_key=settings.COHERE_API_KEY, httpx_client=_http_client
+        )
     return _cohere_client
 
 
@@ -38,30 +46,55 @@ async def close_cohere_client() -> None:
     _cohere_client = None
 
 
+async def _acquire_cohere_pace_slot() -> None:
+    global _last_call_ts
+    pace_ms = int(_MIN_INTERVAL_SEC * 1000)
+    try:
+        r = get_redis_client()
+        for _ in range(20):
+            if await r.set(_PACE_KEY, "1", px=pace_ms, nx=True):
+                return
+            ttl_ms = await r.pttl(_PACE_KEY)
+            sleep_s = max(
+                0.25,
+                min(
+                    (ttl_ms if ttl_ms and ttl_ms > 0 else pace_ms) / 1000.0,
+                    _MIN_INTERVAL_SEC,
+                ),
+            )
+            await asyncio.sleep(sleep_s)
+    except Exception as exc:
+        logger.debug("Redis Cohere pace gate unavailable; using local lock: %s", exc)
+
+    async with _rate_lock:
+        now = time.monotonic()
+        wait_s = _MIN_INTERVAL_SEC - (now - _last_call_ts)
+        if wait_s > 0:
+            await asyncio.sleep(wait_s)
+        _last_call_ts = time.monotonic()
+
+
 async def rerank_chunks(
     query: str,
     candidates: list[ScoredChunk],
     top_n: int = 5,
 ) -> list[ScoredChunk]:
-    global _last_call_ts
     if not candidates:
         return []
 
     effective_top_n = min(top_n, len(candidates))
-    cache_key = (query.strip(), tuple(c.chunk.chunk_id for c in candidates), effective_top_n)
+    cache_key = (
+        query.strip(),
+        tuple(c.chunk.chunk_id for c in candidates),
+        effective_top_n,
+    )
     if cache_key in _rerank_cache:
         _rerank_cache.move_to_end(cache_key)
         return _rerank_cache[cache_key]
 
     response = None
     for attempt in range(4):
-        async with _rate_lock:
-            now = time.monotonic()
-            wait_s = _MIN_INTERVAL_SEC - (now - _last_call_ts)
-            if wait_s > 0:
-                await asyncio.sleep(wait_s)
-            _last_call_ts = time.monotonic()
-
+        await _acquire_cohere_pace_slot()
         try:
             response = await get_cohere_client().rerank(
                 model=settings.RERANK_MODEL,
@@ -72,7 +105,11 @@ async def rerank_chunks(
             break
         except TooManyRequestsError:
             backoff = 15.0 * (attempt + 1)
-            logger.warning("Cohere 429 rate limit hit (attempt %d/4); sleeping %.1fs", attempt + 1, backoff)
+            logger.warning(
+                "Cohere 429 rate limit hit (attempt %d/4); sleeping %.1fs",
+                attempt + 1,
+                backoff,
+            )
             await asyncio.sleep(backoff)
             if attempt == 3:
                 raise
@@ -92,24 +129,3 @@ async def rerank_chunks(
     while len(_rerank_cache) > _RERANK_CACHE_MAX:
         _rerank_cache.popitem(last=False)
     return reranked
-
-
-async def _smoke_test() -> None:
-    from src.retrieval.hybrid_search import close_qdrant_client, hybrid_search
-
-    try:
-        test_query = "How does etcd handle Raft leader election timeout and heartbeat interval?"
-        candidates = await hybrid_search(test_query, top_k=25, services=["etcd-cncf"])
-        top_chunks = await rerank_chunks(test_query, candidates, top_n=3)
-        for rank, sc in enumerate(top_chunks, start=1):
-            print(
-                f"#{rank} | rerank={sc.rerank_score:.4f} | rrf={sc.hybrid_score:.4f} | "
-                f"{sc.chunk.metadata.file_path} :: {sc.chunk.metadata.section_hierarchy}"
-            )
-    finally:
-        await close_cohere_client()
-        await close_qdrant_client()
-
-
-if __name__ == "__main__":
-    asyncio.run(_smoke_test())

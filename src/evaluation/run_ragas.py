@@ -1,11 +1,10 @@
-
 import argparse
 import asyncio
-from datetime import datetime, timezone
 import json
 import math
-from pathlib import Path
 import time
+from datetime import UTC, datetime
+from pathlib import Path
 
 from datasets import Dataset
 from langchain_core.embeddings import Embeddings
@@ -20,7 +19,6 @@ from src.core.observability import flush_langfuse, get_langfuse_run_config
 from src.graph.workflow import rag_graph
 from src.retrieval.hybrid_search import close_qdrant_client, get_dense_model
 from src.retrieval.reranker import close_cohere_client
-
 
 THRESHOLDS = {
     "faithfulness": 0.95,
@@ -41,22 +39,17 @@ class ThrottledChatGroq(ChatGroq):
         if wait > 0:
             await asyncio.sleep(wait)
         _last_ts = time.monotonic()
-        return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
-
+        return await super()._agenerate(
+            messages, stop=stop, run_manager=run_manager, **kwargs
+        )
 
 
 class FastEmbedLangchainAdapter(Embeddings):
-
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [
-            vec.tolist()
-            for vec in get_dense_model().embed(texts)
-        ]
+        return [vec.tolist() for vec in get_dense_model().embed(texts)]
 
     def embed_query(self, text: str) -> list[float]:
-        return next(
-            get_dense_model().embed([text])
-        ).tolist()
+        return next(get_dense_model().embed([text])).tolist()
 
 
 async def _run_single_case(
@@ -105,10 +98,7 @@ async def _run_single_case(
         "ground_truth": item["ground_truth"],
         "should_refuse": bool(item["should_refuse"]),
         "answer": str(state.get("final_answer", "")),
-        "contexts": [
-            c.chunk.content[:1200]
-            for c in chunks[:4]
-        ],
+        "contexts": [c.chunk.content[:1200] for c in chunks[:4]],
         "refused": refused,
         "citations_count": len(citations),
         "latency_ms": latency_ms,
@@ -123,7 +113,7 @@ def _save_report(
 ) -> dict:
 
     summary = {
-        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "timestamp_utc": datetime.now(UTC).isoformat(),
         "judge_model": JUDGE_MODEL,
         "total_cases": len(results),
         "metrics": {
@@ -157,15 +147,10 @@ async def run_evaluation(
     ids_filter: set[str] | None = None,
 ) -> int:
 
-    raw_items: list[dict] = json.loads(
-        dataset_path.read_text(encoding="utf-8")
-    )
+    raw_items: list[dict] = json.loads(dataset_path.read_text(encoding="utf-8"))
 
     if ids_filter:
-        raw_items = [
-            x for x in raw_items
-            if x["id"] in ids_filter
-        ]
+        raw_items = [x for x in raw_items if x["id"] in ids_filter]
 
     if limit is not None:
         raw_items = raw_items[:limit]
@@ -173,52 +158,32 @@ async def run_evaluation(
     cached_by_id: dict[str, dict] = {}
 
     if (judge_only or resume) and report_path.exists():
-        existing = json.loads(
-            report_path.read_text(encoding="utf-8")
-        )
+        existing = json.loads(report_path.read_text(encoding="utf-8"))
 
-        cached_by_id = {
-            c["id"]: c
-            for c in existing.get("cases", [])
-        }
+        cached_by_id = {c["id"]: c for c in existing.get("cases", [])}
 
     results: list[dict] = []
 
     if judge_only:
+        results = [cached_by_id[x["id"]] for x in raw_items if x["id"] in cached_by_id]
 
-        results = [
-            cached_by_id[x["id"]]
-            for x in raw_items
-            if x["id"] in cached_by_id
-        ]
-
-        print(
-            f"Loaded {len(results)} cached cases "
-            f"from {report_path} (--judge-only)."
-        )
+        print(f"Loaded {len(results)} cached cases from {report_path} (--judge-only).")
 
     else:
-
         try:
             for i, item in enumerate(raw_items, start=1):
-
                 if (
                     resume
                     and item["id"] in cached_by_id
                     and (
-                        not cached_by_id[item["id"]]["refused"]
-                        or item["should_refuse"]
+                        not cached_by_id[item["id"]]["refused"] or item["should_refuse"]
                     )
                 ):
-
                     print(
-                        f"[{i}/{len(raw_items)}] "
-                        f"{item['id']} | reused from checkpoint"
+                        f"[{i}/{len(raw_items)}] {item['id']} | reused from checkpoint"
                     )
 
-                    results.append(
-                        cached_by_id[item["id"]]
-                    )
+                    results.append(cached_by_id[item["id"]])
 
                     continue
 
@@ -231,11 +196,8 @@ async def run_evaluation(
                 results.append(res)
 
                 ref_acc = round(
-                    sum(
-                        1
-                        for r in results
-                        if r["refused"] == r["should_refuse"]
-                    ) / len(results),
+                    sum(1 for r in results if r["refused"] == r["should_refuse"])
+                    / len(results),
                     4,
                 )
 
@@ -255,49 +217,30 @@ async def run_evaluation(
 
     refusal_accuracy = (
         round(
-            sum(
-                1
-                for r in results
-                if r["refused"] == r["should_refuse"]
-            ) / len(results),
+            sum(1 for r in results if r["refused"] == r["should_refuse"])
+            / len(results),
             4,
         )
         if results
         else 0.0
     )
 
-    answerable = [
-        r for r in results
-        if not r["should_refuse"]
-    ]
+    answerable = [r for r in results if not r["should_refuse"]]
 
     ragas_scores: dict[str, float] = {}
 
     if answerable:
-
         hf_ds = Dataset.from_dict(
             {
-                "question": [
-                    r["question"]
-                    for r in answerable
-                ],
-                "answer": [
-                    r["answer"]
-                    for r in answerable
-                ],
+                "question": [r["question"] for r in answerable],
+                "answer": [r["answer"] for r in answerable],
                 "contexts": [
-                    [
-                        c[:1200]
-                        for c in r["contexts"][:4]
-                    ]
+                    [c[:1200] for c in r["contexts"][:4]]
                     if r["contexts"]
                     else ["NO_CONTEXT"]
                     for r in answerable
                 ],
-                "ground_truth": [
-                    r["ground_truth"]
-                    for r in answerable
-                ],
+                "ground_truth": [r["ground_truth"] for r in answerable],
             }
         )
 
@@ -313,9 +256,7 @@ async def run_evaluation(
             )
         )
 
-        judge_emb = LangchainEmbeddingsWrapper(
-            FastEmbedLangchainAdapter()
-        )
+        judge_emb = LangchainEmbeddingsWrapper(FastEmbedLangchainAdapter())
 
         run_cfg = RunConfig(
             timeout=300,
@@ -340,9 +281,7 @@ async def run_evaluation(
         df = eval_out.to_pandas()
 
         for idx_row, case_obj in enumerate(answerable):
-
             if idx_row < len(df):
-
                 case_obj["ragas"] = {
                     col: (
                         None
@@ -365,15 +304,11 @@ async def run_evaluation(
             "context_recall",
             "context_precision",
         ):
-
             if col in df.columns:
-
                 valid = df[col].dropna()
 
                 ragas_scores[col] = (
-                    round(float(valid.mean()), 4)
-                    if len(valid) > 0
-                    else 0.0
+                    round(float(valid.mean()), 4) if len(valid) > 0 else 0.0
                 )
 
     summary = _save_report(
@@ -383,31 +318,17 @@ async def run_evaluation(
         refusal_accuracy,
     )
 
-    print(
-        "\n"
-        + "=" * 60
-        + "\nSYSARCH-RAG EVALUATION SUMMARY\n"
-        + "=" * 60
-    )
+    print("\n" + "=" * 60 + "\nSYSARCH-RAG EVALUATION SUMMARY\n" + "=" * 60)
 
     for k, v in summary["metrics"].items():
-
         t = THRESHOLDS.get(k, 0.0)
 
-        ok = (
-            not math.isnan(v)
-            and v >= t
-        )
+        ok = not math.isnan(v) and v >= t
 
-        print(
-            f"  {k:<20}: {v:.4f} "
-            f"(target >= {t:.2f}) "
-            f"[{'PASS' if ok else 'FAIL'}]"
-        )
+        print(f"  {k:<20}: {v:.4f} (target >= {t:.2f}) [{'PASS' if ok else 'FAIL'}]")
 
     if enforce_gate and any(
-        math.isnan(summary["metrics"].get(k, 0.0))
-        or summary["metrics"].get(k, 0.0) < t
+        math.isnan(summary["metrics"].get(k, 0.0)) or summary["metrics"].get(k, 0.0) < t
         for k, t in THRESHOLDS.items()
     ):
         return 1
@@ -461,13 +382,7 @@ def main() -> None:
     args = parser.parse_args()
 
     ids_filter = (
-        {
-            s.strip()
-            for s in args.ids.split(",")
-            if s.strip()
-        }
-        if args.ids
-        else None
+        {s.strip() for s in args.ids.split(",") if s.strip()} if args.ids else None
     )
 
     raise SystemExit(
